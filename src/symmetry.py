@@ -13,6 +13,7 @@ import dataclasses as dcls
 from enum import Enum, auto
 import numpy as onp
 from src import geo_ops_utils as gops
+from src.core.static_types import ReplaceMixin
 
 NDArray = onp.ndarray
 _2PI = 2.0 * onp.pi
@@ -104,7 +105,7 @@ class CharacterTable:
 
 
 @dcls.dataclass(frozen=True)
-class AffineOperation:
+class AffineOperation(ReplaceMixin):
   """An affine symmetry operation ``x -> matrix @ x + translation``."""
 
   matrix: NDArray

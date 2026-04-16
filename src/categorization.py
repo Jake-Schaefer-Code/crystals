@@ -86,8 +86,8 @@ def latex_bmatrix_vec(A, fmt=".3g"):
   return rf"\begin{{bmatrix}}{body}\end{{bmatrix}}"
 
 
-def print_symmetry_operations(sym_ops):
+def print_symmetry_operations(sym_ops: list[sym.AffineOperation]):
   for op in sym_ops:
-    display(Markdown(f"**{op.name}**"))
+    display(Markdown(f"**{op.label}**"))
     display(Math(fr"$$\text{{Rotation/Reflection:}}{latex_bmatrix(op.matrix)}\qquad\text{{Translation:}}\qquad{latex_bmatrix_vec(op.translation)}$$"))
     display(Markdown("---"))
