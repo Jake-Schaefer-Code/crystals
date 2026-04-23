@@ -123,6 +123,7 @@ class TriMap:
     return onp.sum(spectral_norms)
 
   def minimize_jacobian(self):
+    r""" min exists because polygon boundary compact? """
     args = zip(self.matrices, self.maps, self.triangulations, self.rotated_polygons)
     energies = onp.array([self.dirichlet_energy(*args) for args in args])
     # optimal index

@@ -186,6 +186,8 @@ def tile_triangular_lattice2(ax: Axes, max_layers: int = 6):
                         xlim=(-2, 2), ylim=(-1, 2), edgecolor='k', facecolor='random')
 
 
+
+
 # Function to plot a rhombic unit cell
 def plot_unit_cell_rhombus(ax: Axes, origin, size):
   points = rhombus_unit_cell(origin, size)

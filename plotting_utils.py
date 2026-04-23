@@ -14,6 +14,9 @@ from src import crystal_funcs as cfuncs
 from src import coordinates as cconv
 from src import planar_geometry as pgeom
 import src.symmetry as sym
+from src.core import NumericNDArray as NDArray
+
+
 
 # ---- common defs
 _2π = 2 * onp.pi
@@ -459,40 +462,41 @@ def plot_weighted_dist(f_sym,
 
 
 # TODO plot contours of 90% intervals?
-def plot_func(func, *xi, center, sym_ops):
-  """
-  """
-  # sym_ops = generate_space_group(symbol)
-  # plot_names = ['Original', f'Symmetrized ({symbol})']
-  # for ax, group, title in zip(axes, data_groups, plot_names):
-  #     ax.set_title(title)
-
-  data_values = [sym.apply_func(func, *xi)]
-  for op in sym_ops:
-    data_values.append(sym.symmetrize(func, *xi, sym_ops=op))
-
-  num = len(sym_ops) + 1
+def plot_func(func, *xi: NDArray, center: NDArray, sym_ops: list[list[sym.AffineOperation]]):
+  r""" """
+  # add the identity for just the plot of the original function
+  ops = [[sym.identity(len(xi))]] + sym_ops
+  num = len(ops)
+  assert len(center) == len(xi)
+  # Flatten grid coordinates for scatter; also translate to the plotted frame.
+  coords = [(x + center[i]).ravel() for i, x in enumerate(xi)]
   
   kwargs = {}
   if len(xi) == 3:
-      subplot_kw={"projection": "3d"}
-      kwargs.update(subplot_kw)
-  
-  fig = plt.figure(figsize=(16,12))
+    subplot_kw={"projection": "3d"}
+    kwargs.update(subplot_kw)
+
+  fig = plt.figure(figsize=(num * 4,8))
   axes = [fig.add_subplot(1, num, i+1, **kwargs) for i in range(num)]    
-  for ax, value in zip(axes, data_values):
-    coords = [(x+center[i]).ravel() for i, x in enumerate(xi)]
+  for ax, op in zip(axes, ops):
+    value = sym.symmetrize(func, *xi, sym_ops=op)
+    value = sym._snap(value)
     scatter = ax.scatter(*coords, c=value.ravel(), cmap=_cmap, alpha=0.5)
     fig.colorbar(scatter, ax=ax)
+    if isinstance(op, sym.FiniteGroupAction):
+      title = op.name
+    else:
+      title = f"[{','.join(o.label for o in op)}]"
     # ax.set_proj_type('persp')
-    ax.set(aspect='equal')
+    ax.set(aspect='equal', title=title)
+    # ax.set(xlim=(-1,1), ylim=(-1,1))
   plt.show()
 
 
 def plot_result(
-  best_map: onp.ndarray, 
-  best_mat: onp.ndarray, 
-  best_poly: onp.ndarray, 
+  best_map: NDArray, 
+  best_mat: NDArray, 
+  best_poly: NDArray, 
   best_tri: Delaunay, 
   dist, 
   dist_weights,
