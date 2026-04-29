@@ -194,31 +194,9 @@ def apply_affine_mat(p, M) -> NDArray:
 
 
 def piecewise_tforms(src, dst, indices):
-  """
-  indices: triangle indices
-  """
+  """ indices: triangle indices """
   return np.array([affine_mat(src[s2], dst[s2]) for s2 in indices])
 
-
-
-def geodesic(p1, p2, num_points=100):
-  p1 /= npla.norm(p1)
-  p2 /= npla.norm(p2)
-  t = np.linspace(0, 1, num_points)[:, None]
-  theta = np.arccos(np.dot(p1, p2))
-  sin_theta = np.sin(theta)
-  if sin_theta==0: 
-    print(f"geodesic(): divide by zero: sin(theta)=0, cos(theta)={np.dot(p1, p2)}")
-    sin_theta=1
-  
-  return (np.sin((1 - t) * theta) / sin_theta) * p1 + (np.sin(t * theta) / sin_theta) * p2
-
-def dist_to_geodesic(p,v1,v2):
-  p /= npla.norm(p)
-  n = np.cross((v1 / npla.norm(v1)), (v2 / npla.norm(v2)))
-  n /= npla.norm(n)
-  theta = np.arccos(np.dot(p,n))
-  return np.pi / 2 - theta 
 
 def find_vertex_angles(polyhedron, adjacency_list):
   """
@@ -252,7 +230,11 @@ def parametrize_triangle(p1, p2, p3, num_points=10):
   mask = (α + β <= 1)
   α, β = α[mask], β[mask]
   γ = 1 - α - β
-  points = sum([α[:, None] * np.array(p1), β[:, None] * np.array(p2), γ[:, None] * np.array(p3)])
+  points = sum([
+    α[:, None] * np.array(p1), 
+    β[:, None] * np.array(p2), 
+    γ[:, None] * np.array(p3)
+  ])
   return points
 
 def scale_poly(points: NDArray) -> NDArray:
@@ -262,9 +244,7 @@ def scale_poly(points: NDArray) -> NDArray:
 
 
 def dirichlet_energy(matrices: NDArray, mapping: NDArray, triangulation: NDArray, polyhedron):
-
   # TODO dont need to calculate volumes every time (in class)
-
   vol0 = tetrahedron_volume(polyhedron[triangulation])
   vol1 = tetrahedron_volume(mapping[triangulation])
   if (vol0 == 0).any() or (vol1==0).any():
@@ -284,22 +264,12 @@ def minimize_jacobian(matrices, maps, triangulations, rotated_polygons):
 
 
 def distance_weights(coords, points, w=None):
-  """
-  weights based on distances from points
-
-  Parameters
-  ----------------
-  coords, 
-  
-  points, 
-  
-  w=None
-  """
+  """ weights based on distances from points """
   distances = npla.norm(coords[:, None, :] - points, axis=2)
   closest_indices = np.argmin(distances, axis=0)
   weight_sums = np.bincount(closest_indices, minlength=coords.shape[0])
   if w is None:
-      return weight_sums / np.sum(weight_sums)
+    return weight_sums / np.sum(weight_sums)
   weights = np.bincount(closest_indices, weights=w, minlength=coords.shape[0])
   # Mean weight value at each coordinate. Coordinates that receive no points
   # should remain zero instead of becoming nan from division by zero.
@@ -310,31 +280,19 @@ def distance_weights(coords, points, w=None):
   # norm to 1
   total = np.sum(weights)
   if total == 0:
-      return weights
+    return weights
   return weights / total
 
 
-def weighted_distribution(f_sym: NDArray, 
-                        coordinates: NDArray, 
-                        simplex: NDArray, 
-                        alpha: NDArray = None, 
-                        n_samples: int = 10000,
-                        rng=None):
-  """
-  coordinates must be of shape (ndim, npts)
-
-  Parameters
-  ----------------
-  f_sym : NDArray, 
-
-  coordinates : NDArray, 
-
-  simplex : NDArray, 
-
-  alpha : NDArray = None, 
-
-  n_samples : int = 10000
-  """
+def weighted_distribution(
+  f_sym: NDArray, 
+  coordinates: NDArray, 
+  simplex: NDArray, 
+  alpha: NDArray|None = None, 
+  n_samples: int = 10000,
+  rng=None
+):
+  """ coordinates must be of shape (ndim, npts) """
 
   alpha = np.ones(len(simplex)) if alpha is None else np.array(alpha)
   rng = np.random.default_rng(rng)

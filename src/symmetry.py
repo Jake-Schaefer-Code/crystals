@@ -90,11 +90,78 @@ class Representation:
   matrices: dict[object, NDArray]   # maps group element -> rho(g)
   name: str = ""
 
-  def character(self) -> NDArray:
-    ...
+  def __post_init__(self) -> None:
+    if not self.matrices:
+      raise ValueError("Representation requires at least one matrix")
 
-  def projector(self, chi: NDArray, irrep_dim: int) -> NDArray:
-    ...
+    normalized: dict[object, NDArray] = {}
+    dim: int | None = None
+    dtype = float
+    for element, matrix in self.matrices.items():
+      matrix = onp.asarray(matrix)
+      if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
+        raise ValueError(
+          "representation matrices must be square, "
+          f"got shape {matrix.shape} for element {element!r}"
+        )
+      if dim is None:
+        dim = matrix.shape[0]
+      elif matrix.shape != (dim, dim):
+        raise ValueError(
+          "all representation matrices must have the same shape, "
+          f"got {(dim, dim)} and {matrix.shape} for element {element!r}"
+        )
+      dtype = onp.result_type(dtype, matrix.dtype)
+      normalized[element] = matrix
+
+    dtype = onp.result_type(dtype, float)
+    object.__setattr__(
+      self,
+      "matrices",
+      {element: onp.asarray(matrix, dtype=dtype) for element, matrix in normalized.items()},
+    )
+
+  @property
+  def elements(self) -> tuple[object, ...]:
+    return tuple(self.matrices.keys())
+
+  @property
+  def order(self) -> int:
+    return len(self.matrices)
+
+  @property
+  def dim(self) -> int:
+    return next(iter(self.matrices.values())).shape[0]
+
+  @property
+  def matrix_stack(self) -> NDArray:
+    return onp.stack(tuple(self.matrices.values()), axis=0)
+
+  def character(self) -> NDArray:
+    return onp.trace(self.matrix_stack, axis1=-2, axis2=-1)
+
+  def projector(self, chi: NDArray | dict[object, complex], irrep_dim: int | float) -> NDArray:
+    r"""Projection matrix ``d/|G| \sum_g \overline{\chi(g)} \rho(g)``."""
+
+    if isinstance(chi, dict):
+      missing = [element for element in self.elements if element not in chi]
+      if missing:
+        raise ValueError(f"character dictionary is missing values for elements {missing!r}")
+      chi = [chi[element] for element in self.elements]
+
+    chi = onp.asarray(list(chi), dtype=complex)
+    if chi.shape != (self.order,):
+      raise ValueError(f"character must have shape {(self.order,)}, got {chi.shape}")
+
+    return irrep_dim / self.order * onp.einsum(
+      "g,gij->ij",
+      onp.conjugate(chi),
+      self.matrix_stack,
+    )
+
+  def reynolds_projector(self) -> NDArray:
+    r"""Projection matrix onto the invariant subspace."""
+    return self.projector(onp.ones(self.order, dtype=complex), 1)
 
 @dcls.dataclass(frozen=True)
 class CharacterTable:
@@ -114,14 +181,17 @@ class AffineOperation(ReplaceMixin):
   label: str = ""
 
   def __post_init__(self) -> None:
-    matrix = onp.asarray(self.matrix, dtype=float)
+    matrix = onp.asarray(self.matrix)
     if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
       raise ValueError(f"matrix must be square, got shape {matrix.shape}")
 
+    dtype = onp.result_type(matrix.dtype, float)
     if self.translation is None:
-      translation = onp.zeros(matrix.shape[0], dtype=float)
+      translation = onp.zeros(matrix.shape[0], dtype=dtype)
     else:
-      translation = onp.asarray(self.translation, dtype=float)
+      translation = onp.asarray(self.translation)
+      dtype = onp.result_type(dtype, translation.dtype)
+      translation = onp.asarray(translation, dtype=dtype)
 
     if translation.shape != (matrix.shape[0],):
       raise ValueError(
@@ -129,6 +199,7 @@ class AffineOperation(ReplaceMixin):
         f"{(matrix.shape[0],)}, got {translation.shape}"
       )
 
+    matrix = onp.asarray(matrix, dtype=dtype)
     object.__setattr__(self, "matrix", matrix)
     object.__setattr__(self, "translation", translation)
 
@@ -141,14 +212,13 @@ class AffineOperation(ReplaceMixin):
     return self.matrix.shape[0]
 
   @property
-  def character(self) -> float:
+  def character(self) -> complex:
     """Character of the defining linear representation at this operation."""
-
-    return float(onp.trace(self.matrix))
+    return onp.trace(self.matrix).item()
 
   @property
-  def determinant(self) -> float:
-    return float(onp.linalg.det(self.matrix))
+  def determinant(self) -> complex:
+    return onp.linalg.det(self.matrix).item()
 
   def as_pair(self) -> tuple[NDArray, NDArray]:
     return self.matrix, self.translation
@@ -156,7 +226,8 @@ class AffineOperation(ReplaceMixin):
   def apply(self, points: NDArray) -> NDArray:
     """Apply the operation to row-vector points with final axis ``dim``."""
 
-    points = onp.asarray(points, dtype=float)
+    dtype = onp.result_type(points, self.matrix, self.translation)
+    points = onp.asarray(points, dtype=dtype)
     if points.shape[-1] != self.dim:
       raise ValueError(
         f"points must have final dimension {self.dim}, got {points.shape}"
@@ -170,7 +241,8 @@ class AffineOperation(ReplaceMixin):
   def apply_dual(self, covectors: NDArray) -> NDArray:
     """Apply the dual action to row-vector reciprocal/covector data."""
 
-    covectors = onp.asarray(covectors, dtype=float)
+    dtype = onp.result_type(covectors, self.matrix)
+    covectors = onp.asarray(covectors, dtype=dtype)
     if covectors.shape[-1] != self.dim:
       raise ValueError(
         f"covectors must have final dimension {self.dim}, got {covectors.shape}"
@@ -506,4 +578,3 @@ def symmetrize(func, *xi: NDArray, sym_ops, domain=None):
     xp = [X_prime[i].reshape(x.shape) for i, x in enumerate(xi)]
     f_symm += apply_func(func, *xp, domain=domain)
   return f_symm/len(sym_ops)
-
