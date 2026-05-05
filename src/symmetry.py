@@ -19,13 +19,6 @@ from src.core.static_types import ReplaceMixin
 NDArray = onp.ndarray
 _2PI = 2.0 * onp.pi
 
-class Bravais2D(Enum):
-  SQUARE = auto()
-  TRIANGULAR = auto()
-  HEXAGONAL = auto()
-  HONEYCOMB = auto()
-
-
 
 def recip_lattice(A: NDArray) -> NDArray:
   r"""
@@ -35,7 +28,7 @@ def recip_lattice(A: NDArray) -> NDArray:
   return _2PI * onp.linalg.inv(A).T # columns are b1, b2
 
 
-
+# TODO
 @dcls.dataclass(frozen=True)
 class Lattice:
   basis: NDArray        # columns = direct lattice basis vectors
@@ -51,6 +44,8 @@ class Lattice:
     G_star = B.T @ B
     return cls(A, B, G, G_star)
 
+
+# TODO
 @dcls.dataclass(frozen=True)
 class SeitzOp:
   R: NDArray   # integer/rational in lattice basis when possible
@@ -60,11 +55,15 @@ class SeitzOp:
     yield self.R
     yield self.tau
 
+
+# TODO
 @dcls.dataclass(frozen=True)
 class PointGroup:
   elements: tuple[NDArray, ...]
   ...
 
+
+# TODO
 @dcls.dataclass(frozen=True)
 class SpaceGroup:
   lattice: Lattice
@@ -72,12 +71,16 @@ class SpaceGroup:
   coset_reps: tuple[SeitzOp, ...]   # or full generators + closure logic
   ...
 
+
+# TODO
 @dcls.dataclass(frozen=True)
 class Site:
   frac: NDArray
   species: str
   dof: object | None = None
 
+
+# TODO
 @dcls.dataclass(frozen=True)
 class Crystal:
   lattice: Lattice
@@ -147,9 +150,11 @@ class Representation:
       missing = [element for element in self.elements if element not in chi]
       if missing:
         raise ValueError(f"character dictionary is missing values for elements {missing!r}")
-      chi = [chi[element] for element in self.elements]
+      _chi = [chi[element] for element in self.elements]
+    else:
+      _chi = chi
 
-    chi = onp.asarray(list(chi), dtype=complex)
+    chi = onp.asarray(list(_chi), dtype=complex)
     if chi.shape != (self.order,):
       raise ValueError(f"character must have shape {(self.order,)}, got {chi.shape}")
 
@@ -163,6 +168,8 @@ class Representation:
     r"""Projection matrix onto the invariant subspace."""
     return self.projector(onp.ones(self.order, dtype=complex), 1)
 
+
+# TODO
 @dcls.dataclass(frozen=True)
 class CharacterTable:
   group: PointGroup | SpaceGroup | object
@@ -177,6 +184,7 @@ class AffineOperation(ReplaceMixin):
   """An affine symmetry operation ``x -> matrix @ x + translation``."""
 
   matrix: NDArray
+  # TODO fix
   translation: NDArray | None = None
   label: str = ""
 
@@ -202,10 +210,16 @@ class AffineOperation(ReplaceMixin):
     matrix = onp.asarray(matrix, dtype=dtype)
     object.__setattr__(self, "matrix", matrix)
     object.__setattr__(self, "translation", translation)
+    object.__setattr__(self, "_transl", translation)
 
   def __iter__(self) -> Iterator[NDArray]:
     yield self.matrix
-    yield self.translation
+    yield self.transl
+
+  @property
+  def transl(self) -> NDArray:
+    return self._transl
+
 
   @property
   def dim(self) -> int:
@@ -221,7 +235,7 @@ class AffineOperation(ReplaceMixin):
     return onp.linalg.det(self.matrix).item()
 
   def as_pair(self) -> tuple[NDArray, NDArray]:
-    return self.matrix, self.translation
+    return self.matrix, self.transl
 
   def apply(self, points: NDArray) -> NDArray:
     """Apply the operation to row-vector points with final axis ``dim``."""
@@ -260,7 +274,7 @@ class AffineOperation(ReplaceMixin):
 
   def inverse(self, *, label: str | None = None) -> AffineOperation:
     matrix = onp.linalg.inv(self.matrix)
-    translation = -matrix @ self.translation
+    translation = - matrix @ self.transl
     return AffineOperation(matrix, translation, self.label if label is None else label)
 
 
@@ -275,7 +289,8 @@ def as_affine_operation(op: AffineOperation | tuple[NDArray, NDArray]) -> Affine
 class FiniteGroupAction:
   """A finite group action represented by affine operations."""
 
-  operations: Sequence[AffineOperation | tuple[NDArray, NDArray]]
+  operations: Sequence[AffineOperation]
+  # operations: Sequence[AffineOperation | tuple[NDArray, NDArray]]
   name: str = ""
 
   def __post_init__(self) -> None:
@@ -309,7 +324,7 @@ class FiniteGroupAction:
 
   @property
   def translations(self) -> NDArray:
-    return onp.stack([op.translation for op in self.operations], axis=0)
+    return onp.stack([op.transl for op in self.operations], axis=0)
 
   @property
   def characters(self) -> NDArray:
@@ -474,7 +489,7 @@ def tetrahedral_group(*, name: str | None = None, tol: float = 1e-10) -> FiniteG
   b2 = rotation3d(onp.pi, onp.array([1.0, 0.0, 0.0]), label="b2")  # order 2
 
   # A_4
-  order = math.factorial(4)/2
+  order = int(math.factorial(4)/2)
   action = generated_group([a3, b2], name=name or "A4", tol=tol, max_order=order)
   if action.order != order:
     raise ValueError(f"tetrahedral_group closure produced order={action.order}, expected 12")
@@ -500,7 +515,7 @@ def generated_group(
     raise ValueError("all generators must have the same dimension")
 
   def key(op: AffineOperation) -> tuple[float, ...]:
-    data = onp.concatenate([op.matrix.ravel(), op.translation])
+    data = onp.concatenate([op.matrix.ravel(), op.transl])
     return tuple(onp.round(data / tol).astype(onp.int64).tolist())
 
   ident = identity(dim)
@@ -555,7 +570,7 @@ def _as_affine_pair(op: AffineOperation | tuple[NDArray, NDArray]) -> tuple[NDAr
   if hasattr(op, "as_pair"):
     return op.as_pair()
   if hasattr(op, "matrix") and hasattr(op, "translation"):
-    return op.matrix, op.translation
+    return op.matrix, op.transl
   return op
 
 def symmetrize(func, *xi: NDArray, sym_ops, domain=None):

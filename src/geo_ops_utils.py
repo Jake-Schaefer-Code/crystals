@@ -37,7 +37,7 @@ def make_q_rot_mats(q) -> NDArray:
     return Rs[0]
   return Rs
 
-def q_rot_mat(theta=0, axis: NDArray|None=None):
+def q_rot_mat(theta: float|NDArray=0.0, axis: NDArray|None=None):
   """
   Creates a rotation matrix for a given quaternion
 

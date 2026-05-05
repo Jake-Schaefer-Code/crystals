@@ -1,6 +1,6 @@
 # lattice_geometry.py
 from __future__ import annotations
-
+from enum import Enum, auto
 import numpy as onp
 from numpy import sin, cos, sqrt
 import src.symmetry as sym
@@ -9,6 +9,15 @@ from src import crystal_funcs as cfuncs
 NDArray = onp.ndarray
 
 _2π = 2 * onp.pi
+
+
+class Bravais2D(Enum):
+  SQUARE = auto()
+  TRIANGULAR = auto()
+  HEXAGONAL = auto()
+  HONEYCOMB = auto()
+
+
 
 def basis_matrix(*vectors: NDArray) -> NDArray:
   """Stack basis vectors as columns of a matrix ``A = [a1 a2 ...]``."""
