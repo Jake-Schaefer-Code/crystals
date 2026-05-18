@@ -10,8 +10,6 @@ actions, orbits, characters, and Reynolds/projector helpers.
 from __future__ import annotations
 from collections.abc import Iterable, Iterator, Sequence
 import dataclasses as dcls
-from enum import Enum, auto
-import math
 import numpy as onp
 from src import geo_ops_utils as gops
 from src.core.static_types import ReplaceMixin
@@ -533,7 +531,7 @@ def identity(dim: int = 2, *, inversion: bool = False, label: str = "e") -> Affi
   matrix = -onp.eye(dim) if inversion else onp.eye(dim)
   return AffineOperation(matrix, onp.zeros(dim), label)
 
-def about(center: NDArray, op: AffineOperation):
+def about(center: NDArray, op: AffineOperation) -> AffineOperation:
   M, t = op.matrix, op.translation
   return AffineOperation(M, center - M @ center + t)
 
