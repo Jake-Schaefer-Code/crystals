@@ -30,6 +30,7 @@ from src.lattice_geometry import (
   triangle_pair_motif,
   tile_space,
   equilateral_triangle_centered,
+  Bravais2D
 )
 import src.symmetry as sym
 NDArray = onp.ndarray
@@ -141,7 +142,7 @@ def tile_hexagonal_lattice(ax: Axes, r=1, num_layers=3, theta0: float=0.0):
   n = 6
   h = sin(_2π / n)
   orbit = hexagon_centered(r, theta0)
-  A = canonical_basis_2d(sym.Bravais2D.HEXAGONAL, scale=r, theta0=theta0)
+  A = canonical_basis_2d(Bravais2D.HEXAGONAL, scale=r, theta0=theta0)
   motif = [orbit]
   frame_to_cells = lambda frame: translated_motif_cells(frame, motif, A)
   max_cells = len(frame_to_cells(nl))
@@ -154,7 +155,7 @@ def tile_hexagonal_lattice(ax: Axes, r=1, num_layers=3, theta0: float=0.0):
 def tile_square_lattice(ax: Axes, a: float=1.0, max_layers: int = 6, theta0: float = 0.0):
   n = 4
   orbit = square_centered(a, theta0)
-  A = canonical_basis_2d(sym.Bravais2D.SQUARE, scale=a, theta0=theta0)
+  A = canonical_basis_2d(Bravais2D.SQUARE, scale=a, theta0=theta0)
   motif = [orbit]
   frame_to_cells = lambda frame: translated_motif_cells(frame, motif, A)
   max_cells = len(frame_to_cells(max_layers))

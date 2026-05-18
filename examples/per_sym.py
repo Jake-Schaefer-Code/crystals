@@ -23,6 +23,7 @@ from src.lattice_geometry import (
   first_bz_hexagon_vertices,
   finite_triangular_patch,
   canonical_basis_2d,
+  Bravais2D
 )
 import src.symmetry as sym
 
@@ -38,6 +39,8 @@ class DomainConfig:
   Nx_cell: int = 10
   Ny_cell: int = 10
   res_per_cell: int = 80
+  # pick k0
+  k0 = 2.2
 
   @property
   def Lx(self):
@@ -172,6 +175,122 @@ def diatomic_dispersion(k, K=1.0, m1=1.0, m2=2.0, a=1.0):
   return ω_acoustic, ω_optical
 
 
+def free_electron_energy_1d(k: NDArray, hbar: float = 1.0, m: float = 1.0) -> NDArray:
+  """Free-electron dispersion E(k) = hbar^2 k^2 / (2m)."""
+  k = onp.asarray(k, dtype=float)
+  return (hbar ** 2 / (2.0 * m)) * k ** 2
+
+
+def nearly_free_electron_1d_bands(
+  k: NDArray,
+  V_G: complex | float,
+  a: float = 1.0,
+  hbar: float = 1.0,
+  m: float = 1.0,
+  V0: float = 0.0,
+  G: float | None = None,
+) -> tuple[NDArray, NDArray, NDArray, NDArray]:
+  r"""
+  Two-band nearly-free-electron model near a 1D Brillouin-zone boundary.
+
+  In the basis {|k>, |k-G>}, the Hamiltonian is
+    [[E0(k) + V0, V_G],
+     [V_G^*,      E0(k-G) + V0]]
+
+  so the split branches satisfy
+    E_\pm(k) = trace \pm sqrt(detuning^2 + |V_G|^2).
+
+  At k = G/2 = pi/a, the direct gap is 2|V_G|.
+  """
+  k = onp.asarray(k, dtype=float)
+  G = _2π / a if G is None else float(G)
+
+  E_k = free_electron_energy_1d(k, hbar=hbar, m=m) + V0
+  E_kmG = free_electron_energy_1d(k - G, hbar=hbar, m=m) + V0
+
+  trace = 0.5 * (E_k + E_kmG)
+  detuning = 0.5 * (E_k - E_kmG)
+  split = onp.sqrt(detuning ** 2 + onp.abs(V_G)**2)
+  return E_k, E_kmG, trace - split, trace + split
+
+
+def folded_free_electron_branches_1d(
+  k: NDArray,
+  a: float = 1.0,
+  hbar: float = 1.0,
+  m: float = 1.0,
+  V0: float = 0.0,
+  n_shells: int = 2,
+  G: float | None = None,
+) -> tuple[NDArray, NDArray]:
+  """
+  Free-electron branches folded into the first Brillouin zone.
+
+  Returns:
+    basis_indices: reciprocal-lattice shifts n with momenta k + n G
+    folded: pointwise energy-ordered branches with shape (2*n_shells+1, len(k))
+  """
+  k = onp.asarray(k, dtype=float)
+  G = _2π / a if G is None else float(G)
+  basis_indices = onp.arange(-n_shells, n_shells + 1)
+  branches = onp.vstack([
+    free_electron_energy_1d(k + n * G, hbar=hbar, m=m) + V0
+    for n in basis_indices
+  ])
+  return basis_indices, onp.sort(branches, axis=0)
+
+
+def nearly_free_electron_reduced_bands_1d(
+  k: NDArray,
+  V_G: complex | float,
+  V_2G: complex | float = 0.0,
+  a: float = 1.0,
+  hbar: float = 1.0,
+  m: float = 1.0,
+  V0: float = 0.0,
+  n_shells: int = 2,
+  G: float | None = None,
+) -> tuple[NDArray, NDArray, NDArray]:
+  r"""
+  Reduced-zone nearly-free-electron bands from a truncated plane-wave basis.
+
+  Basis states are |k + nG> for n in {-n_shells, ..., n_shells}. We keep only
+  the first few Fourier harmonics of the periodic potential:
+    - neighboring plane-wave sectors couple by V_G
+    - next-nearest sectors couple by V_2G
+
+  Returns:
+    basis_indices: reciprocal-lattice shifts n
+    eigvals: energies with shape (n_bands, len(k))
+    eigvecs: eigenvectors with shape (len(k), n_bands, n_bands)
+  """
+  k = onp.asarray(k, dtype=float)
+  G = _2π / a if G is None else float(G)
+  basis_indices = onp.arange(-n_shells, n_shells + 1)
+  n_bands = len(basis_indices)
+  eigvals = onp.zeros((len(k), n_bands), dtype=float)
+  eigvecs = onp.zeros((len(k), n_bands, n_bands), dtype=complex)
+  coupling_1 = complex(V_G)
+  coupling_2 = complex(V_2G)
+
+  for i, q in enumerate(k):
+    plane_wave_ks = q + basis_indices * G
+    H = onp.diag(
+      (free_electron_energy_1d(plane_wave_ks, hbar=hbar, m=m) + V0).astype(complex)
+    )
+    for j in range(n_bands - 1):
+      H[j, j + 1] = onp.conjugate(coupling_1)
+      H[j + 1, j] = coupling_1
+    if coupling_2 != 0:
+      for j in range(n_bands - 2):
+        H[j, j + 2] = onp.conjugate(coupling_2)
+        H[j + 2, j] = coupling_2
+    vals, vecs = onp.linalg.eigh(H)
+    eigvals[i] = vals.real
+    eigvecs[i] = vecs
+
+  return basis_indices, eigvals.T, eigvecs
+
 def make_k_mesh(kmax: float, ngrid: int) -> tuple[NDArray, ...]:
   k = onp.linspace(-kmax, kmax, ngrid)
   return onp.meshgrid(k, k, indexing='xy')
@@ -227,7 +346,8 @@ def plot_example():
   """Show a synthetic six-wave Bloch transform with first-BZ overlay."""
   import matplotlib.pyplot as plt
 
-  A = canonical_basis_2d(sym.Bravais2D.TRIANGULAR, scale=1.0)
+
+  A = canonical_basis_2d(Bravais2D.TRIANGULAR, scale=1.0)
   B = sym.recip_lattice(A)
   b1, b2 = basis_vectors(B)
   bz = first_bz_hexagon_vertices(B)

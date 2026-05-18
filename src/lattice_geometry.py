@@ -5,6 +5,7 @@ import numpy as onp
 from numpy import sin, cos, sqrt
 import src.symmetry as sym
 from src import crystal_funcs as cfuncs
+import src.named_groups as groups
 
 NDArray = onp.ndarray
 
@@ -79,13 +80,13 @@ def translated_motif_cells(
 
 # TODO how to find basis vectors using symmetry groups rather than hard-coding?
 
-def canonical_basis_2d(kind: sym.Bravais2D, scale: float = 1.0, theta0: float = 0.0) -> NDArray:
-  if kind is sym.Bravais2D.SQUARE:
+def canonical_basis_2d(kind: Bravais2D, scale: float = 1.0, theta0: float = 0.0) -> NDArray:
+  if kind is Bravais2D.SQUARE:
     A0 = basis_matrix(
       onp.array([1.0, 0.0]),
       onp.array([0.0, 1.0]),
     )
-  elif kind is sym.Bravais2D.TRIANGULAR:
+  elif kind is Bravais2D.TRIANGULAR:
     r""" 
     Direct lattice:
       a1 = a (1, 0)
@@ -95,13 +96,13 @@ def canonical_basis_2d(kind: sym.Bravais2D, scale: float = 1.0, theta0: float = 
       onp.array([1.0, 0.0]),
       onp.array([cos(_2π/6), sin(_2π/6)]),
     )
-  elif kind is sym.Bravais2D.HEXAGONAL:
+  elif kind is Bravais2D.HEXAGONAL:
     A0 = basis_matrix(
       onp.array([1.5, sin(_2π / 6)]),
       onp.array([0.0, 2 * sin(_2π / 6)]),
     )
     # flat-top: θ_0 = 0, pointy-top: θ_0 = π / 
-  elif kind is sym.Bravais2D.HONEYCOMB:
+  elif kind is Bravais2D.HONEYCOMB:
     """ Honeycomb lattice basis vectors. """
     A0 = basis_matrix(
       onp.array([2 * sin(_2π/6), 0.0]),
@@ -171,13 +172,13 @@ def make_triangular_lattice(n1: int, n2: int, a=1.0):
     a1 = a (1, 0)
     a2 = a (1/2, sqrt(3)/2)
   """
-  A = canonical_basis_2d(sym.Bravais2D.TRIANGULAR, scale=a)
+  A = canonical_basis_2d(Bravais2D.TRIANGULAR, scale=a)
   sites = lattice_sites(max(n1, n2), A)
   return onp.array(sites), A
 
 
 def triangle_pair_motif(side: float = 1.0, theta0: float = 0.0):
-  A = canonical_basis_2d(sym.Bravais2D.TRIANGULAR, side, theta0)
+  A = canonical_basis_2d(Bravais2D.TRIANGULAR, side, theta0)
   a1, a2 = basis_vectors(A)
   # One rhombic/parallelogram primitive cell split into two triangles.
   tri_up = onp.array([
@@ -221,7 +222,7 @@ def triangle_d3_wedges(side: float = 1.0, theta0: float = 0.0):
     0.5 * (v0 + v1),
   ])
 
-  D3 = sym.dihedral_group(3)
+  D3 = groups.dihedral_group(3)
   if theta0 != 0.0:
     D3 = sym.conjugate_action(D3, sym.rotation2d(theta0))
 
@@ -270,7 +271,7 @@ def make_honeycomb_lattice(n1: int, n2: int, a=1.0):
   Here a is the nearest-neighbor distance.
   """
   # Triangular Bravais lattice vectors
-  A = canonical_basis_2d(sym.Bravais2D.HONEYCOMB, scale=a)
+  A = canonical_basis_2d(Bravais2D.HONEYCOMB, scale=a)
 
   # Two-site basis
   bA = onp.array([0.0, 0.0])

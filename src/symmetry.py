@@ -172,10 +172,158 @@ class Representation:
 # TODO
 @dcls.dataclass(frozen=True)
 class CharacterTable:
-  group: PointGroup | SpaceGroup | object
-  characters: dict[object, NDArray]   # maps group element -> chi(g)
+  class_order: tuple[object, ...]
+  class_sizes: dict[object, int]
+  characters: dict[object, NDArray]   # maps row label -> values on conjugacy classes
+  group: PointGroup | SpaceGroup | object | None = None
   name: str = ""
-  ...
+
+  def __post_init__(self) -> None:
+    if not self.class_order:
+      raise ValueError("CharacterTable requires a nonempty class_order")
+
+    missing = [ct for ct in self.class_order if ct not in self.class_sizes]
+    if missing:
+      raise ValueError(f"class_sizes is missing entries for {missing!r}")
+
+    normalized: dict[object, NDArray] = {}
+    for label, row in self.characters.items():
+      arr = onp.asarray(row, dtype=complex)
+      if arr.shape != (len(self.class_order),):
+        raise ValueError(
+          "character rows must have shape "
+          f"{(len(self.class_order),)}, got {arr.shape} for {label!r}"
+        )
+      normalized[label] = arr
+
+    object.__setattr__(self, "class_order", tuple(self.class_order))
+    object.__setattr__(self, "characters", normalized)
+
+  @classmethod
+  def from_rows(
+    cls,
+    *,
+    class_order: Sequence[object],
+    class_sizes: dict[object, int],
+    row_labels: Sequence[object],
+    rows: Sequence[Sequence[complex]],
+    group: PointGroup | SpaceGroup | object | None = None,
+    name: str = "",
+  ) -> "CharacterTable":
+    characters = {
+      label: onp.asarray(row, dtype=complex)
+      for label, row in zip(row_labels, rows, strict=True)
+    }
+    return cls(
+      class_order=tuple(class_order),
+      class_sizes=dict(class_sizes),
+      characters=characters,
+      group=group,
+      name=name,
+    )
+
+  @property
+  def order(self) -> int:
+    return sum(self.class_sizes[ct] for ct in self.class_order)
+
+  @property
+  def n_classes(self) -> int:
+    return len(self.class_order)
+
+  @property
+  def row_labels(self) -> tuple[object, ...]:
+    return tuple(self.characters.keys())
+
+  @property
+  def weights(self) -> NDArray:
+    return onp.asarray([self.class_sizes[ct] for ct in self.class_order], dtype=float) / self.order
+
+  def __getitem__(self, label: object) -> NDArray:
+    return self.characters[label]
+
+  def matrix(self, labels: Sequence[object] | None = None) -> NDArray:
+    labels = self.row_labels if labels is None else tuple(labels)
+    if not labels:
+      return onp.zeros((0, self.n_classes), dtype=complex)
+    return onp.stack([self.characters[label] for label in labels], axis=0)
+
+  def weighted_matrix(self, labels: Sequence[object] | None = None) -> NDArray:
+    return onp.conjugate(self.matrix(labels)) * self.weights[None, :]
+
+  def as_dict(self, label: object) -> dict[object, complex]:
+    row = self[label]
+    return {ct: row[i] for i, ct in enumerate(self.class_order)}
+
+  def class_function(self, values: Sequence[complex] | dict[object, complex]) -> dict[object, complex]:
+    row = self._coerce_row(values)
+    return {ct: row[i] for i, ct in enumerate(self.class_order)}
+
+  def inner_product(
+    self,
+    chi: object | Sequence[complex] | dict[object, complex],
+    psi: object | Sequence[complex] | dict[object, complex],
+  ) -> complex:
+    u = self._coerce_row(chi)
+    v = self._coerce_row(psi)
+    return onp.dot(self.weights, onp.conjugate(u) * v)
+
+  def norm(self, chi: object | Sequence[complex] | dict[object, complex]) -> complex:
+    return self.inner_product(chi, chi)
+
+  def decompose(
+    self,
+    chi: object | Sequence[complex] | dict[object, complex],
+    *,
+    labels: Sequence[object] | None = None,
+  ) -> dict[object, complex]:
+    labels = self.row_labels if labels is None else tuple(labels)
+    return {label: self.inner_product(chi, label) for label in labels}
+
+  def orthogonal_complement(
+    self,
+    labels: Sequence[object] | None = None,
+    *,
+    tol: float = 1e-10,
+  ) -> tuple[NDArray, ...]:
+    r"""Basis for the weighted orthogonal complement of the selected rows."""
+    A = self.weighted_matrix(labels)
+    if A.size == 0:
+      return tuple(onp.eye(self.n_classes, dtype=complex)[i] for i in range(self.n_classes))
+
+    _, s, vh = onp.linalg.svd(A, full_matrices=True)
+    rank = int(onp.sum(s > tol))
+    basis = vh[rank:]
+    return tuple(onp.asarray(row, dtype=complex) for row in basis)
+
+  def with_character(self, label: object, row: Sequence[complex]) -> "CharacterTable":
+    updated = dict(self.characters)
+    updated[label] = onp.asarray(row, dtype=complex)
+    return CharacterTable(
+      class_order=self.class_order,
+      class_sizes=dict(self.class_sizes),
+      characters=updated,
+      group=self.group,
+      name=self.name,
+    )
+
+  def _coerce_row(self, chi: object | Sequence[complex] | dict[object, complex]) -> NDArray:
+    if isinstance(chi, dict):
+      missing = [ct for ct in self.class_order if ct not in chi]
+      if missing:
+        raise ValueError(f"class function is missing values for {missing!r}")
+      return onp.asarray([chi[ct] for ct in self.class_order], dtype=complex)
+
+    try:
+      return self.characters[chi]
+    except KeyError:
+      pass
+    except TypeError:
+      pass
+
+    arr = onp.asarray(chi, dtype=complex)
+    if arr.shape != (self.n_classes,):
+      raise ValueError(f"class function must have shape {(self.n_classes,)}, got {arr.shape}")
+    return arr
 
 
 
@@ -437,67 +585,6 @@ def conjugate_action(action: FiniteGroupAction, op: AffineOperation):
     name=action.name,
   )
 
-
-def cyclic_group(
-  order: int,
-  *,
-  dim: int = 2,
-  axis: NDArray | None = None,
-  name: str | None = None,
-) -> FiniteGroupAction:
-  if order <= 0:
-    raise ValueError("order must be positive")
-  if dim == 2:
-    ops = [rotation2d(i * _2PI / order, label=f"r^{i}") for i in range(order)]
-  elif dim == 3:
-    if axis is None:
-      raise ValueError("axis is required for a 3D cyclic group")
-    ops = [rotation3d(i * _2PI / order, axis, label=f"r^{i}") for i in range(order)]
-  else:
-    raise ValueError(f"cyclic_group only supports dim=2 or dim=3, got {dim}")
-  return FiniteGroupAction(ops, name=name or f"C{order}")
-
-
-def dihedral_group(order: int, *, name: str | None = None) -> FiniteGroupAction:
-  """Planar dihedral action generated by rotation and reflection across x-axis."""
-
-  if order <= 0:
-    raise ValueError("order must be positive")
-
-  mirror = reflection(onp.array([0.0, 1.0]), label="s")
-  ops: list[AffineOperation] = []
-  for i in range(order):
-    rot = rotation2d(i * _2PI / order, label=f"r^{i}")
-    ops.append(rot)
-  for i in range(order):
-    rot = rotation2d(i * _2PI / order, label=f"r^{i}")
-    ops.append(rot.compose(mirror, label=f"r^{i}s"))
-  return FiniteGroupAction(ops, name=name or f"D{order}")
-
-
-def tetrahedral_group(*, name: str | None = None, tol: float = 1e-10) -> FiniteGroupAction:
-  r"""Return the proper rotational symmetry group of a tetrahedron (isomorphic to \(A_4\)).
-
-  Implementation: close the group generated by a 3-fold rotation about the body-diagonal
-  axis \((1,1,1)\) and a 2-fold rotation about the x-axis. This yields a 12-element
-  subgroup of SO(3) (the chiral tetrahedral group).
-  """
-
-  axis_111 = onp.array([1.0, 1.0, 1.0])
-  axis_111 = axis_111 / onp.linalg.norm(axis_111)
-  a3 = rotation3d(_2PI / 3.0, axis_111, label="a3")  # order 3
-  b2 = rotation3d(onp.pi, onp.array([1.0, 0.0, 0.0]), label="b2")  # order 2
-
-  # A_4
-  order = int(math.factorial(4)/2)
-  action = generated_group([a3, b2], name=name or "A4", tol=tol, max_order=order)
-  if action.order != order:
-    raise ValueError(f"tetrahedral_group closure produced order={action.order}, expected 12")
-  return action
-
-
-
-
 def generated_group(
   generators: Sequence[AffineOperation | tuple[NDArray, NDArray]],
   *,
@@ -516,15 +603,14 @@ def generated_group(
 
   def key(op: AffineOperation) -> tuple[float, ...]:
     data = onp.concatenate([op.matrix.ravel(), op.transl])
-    return tuple(onp.round(data / tol).astype(onp.int64).tolist())
+    packed = onp.concatenate([data.real, data.imag])
+    return tuple(onp.round(packed / tol).astype(onp.int64).tolist())
+
 
   ident = identity(dim)
   seen = {key(ident): ident}
   frontier = [ident]
   while frontier and ((current := frontier.pop()) or True):
-
-  # while frontier:
-  #   current = frontier.pop()
     for gen in gens:
       for candidate in (gen.compose(current), current.compose(gen)):
         candidate = candidate.replace(

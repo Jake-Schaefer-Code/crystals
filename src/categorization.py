@@ -97,15 +97,26 @@ def cyclic_power_rep(A, order: int):
 )
 
 
+def _latex_scalar(x, fmt=".3g"):
+  try:
+    return format(x, fmt)
+  except (TypeError, ValueError):
+    try:
+      import sympy as sp
+      return sp.latex(sp.sympify(x))
+    except Exception:
+      return str(x)
+
+
 def latex_bmatrix(A, fmt=".3g"):
   A = onp.asarray(A)
-  rows = [" & ".join(format(x, fmt) for x in row) for row in A]
+  rows = [" & ".join(_latex_scalar(x, fmt) for x in row) for row in A]
   body = r" \\ ".join(rows)
   return rf"\begin{{bmatrix}}{body}\end{{bmatrix}}"
 
 def latex_bmatrix_vec(A, fmt=".3g"):
   A = onp.asarray(A)
-  rows = [format(x, fmt) for x in A]
+  rows = [_latex_scalar(x, fmt) for x in A]
   body = r" \\ ".join(rows)
   return rf"\begin{{bmatrix}}{body}\end{{bmatrix}}"
 
@@ -117,6 +128,19 @@ def show_latex_eqn(eqn: str):
 
 def print_symmetry_operations(sym_ops: list[sym.AffineOperation]):
   for op in sym_ops:
+    rot = fr"\text{{Rotation/Reflection:}}{latex_bmatrix(op.matrix)}"
+    trans = fr"\text{{Translation:}}\qquad{latex_bmatrix_vec(op.translation)}"
     display(Markdown(f"**{op.label}**"))
-    display(Math(fr"$$\text{{Rotation/Reflection:}}{latex_bmatrix(op.matrix)}\qquad\text{{Translation:}}\qquad{latex_bmatrix_vec(op.translation)}$$"))
+    display(Math(fr"$${rot}\qquad{trans}$$"))
     display(Markdown("---"))
+
+
+def display_char_table(table):
+  col_sep = "|".join("c" for _ in range(len(table[0])))
+  rows = []
+  for row in table:
+    rows.append(" & ".join(map(str, row)))
+
+  row_sep = r" \\ \hline "
+  body = str.join(row_sep, rows) + row_sep
+  display(Math(rf"\begin{{array}}{{|{col_sep}|}}\hline {body} \end{{array}}"))

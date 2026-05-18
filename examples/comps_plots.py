@@ -10,14 +10,34 @@ from mpl_toolkits.mplot3d.axes3d import Axes3D
 from matplotlib.axes import Axes
 
 
-from lattice_plots import (
-  make_diatomic_dispersion_figure,
-  make_discrete_laplacian_figure,
-  make_gap_opening_animation,
-  make_monatomic_dispersion_figure,
-  make_shift_operator_animation,
-)
-from per_sym import make_k_mesh, gaussian
+try:
+  from examples.lattice_plots import (
+    make_diatomic_dispersion_figure,
+    make_discrete_laplacian_figure,
+    make_gap_opening_animation,
+    make_monatomic_dispersion_figure,
+    make_shift_operator_animation,
+  )
+  from examples.per_sym import (
+    finite_triangular_patch,
+    first_bz_hexagon_vertices,
+    gaussian,
+    make_k_mesh,
+  )
+except ImportError:
+  from lattice_plots import (  # type: ignore[no-redef]
+    make_diatomic_dispersion_figure,
+    make_discrete_laplacian_figure,
+    make_gap_opening_animation,
+    make_monatomic_dispersion_figure,
+    make_shift_operator_animation,
+  )
+  from per_sym import (  # type: ignore[no-redef]
+    finite_triangular_patch,
+    first_bz_hexagon_vertices,
+    gaussian,
+    make_k_mesh,
+  )
 from plotting_utils import (
   PlotStyle, apply_matplotlib_style, _merge_kwargs, _clean_axes, _panel_text,
   inline_latex, resolve_outdir, save,
@@ -27,7 +47,6 @@ import physics as phys
 NDArray = onp.ndarray
 from src.lattice_geometry import make_triangular_lattice
 from src.symmetry import recip_lattice
-from per_sym import first_bz_hexagon_vertices, finite_triangular_patch
 
 # ---------------------------
 # Configuration
@@ -799,8 +818,8 @@ def make_mnt_plots(kmax: float = 2.4):
     ax.arrow(0, 0, 0.92 * x, 0.92 * y, width=0.012, head_width=0.10, head_length=0.14,
             length_includes_head=True, alpha=0.85)
     ax.scatter([x], [y], s=28, zorder=5)
-  ax.text(0.03, 0.96, 
-      r"One fixed energy $E_0$" "\n" r"=> one fixed radius  $|\mathbf{k}|=k_0$" "\nbut infinitely many directions.",
+  lbl = r"One fixed energy $E_0$\n$\implies$ one fixed radius $|\mathbf{k}|=k_0$\nbut infinitely many directions."
+  ax.text(0.03, 0.96, lbl,
       transform=ax.transAxes, va="top")
   ax.set(title="Degeneracy at fixed free-particle energy", xlabel=r"$k_x$", ylabel=r"$k_y$", 
          aspect="equal", xlim=(-2.4, 2.4), ylim=(-2.4, 2.4))
