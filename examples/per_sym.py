@@ -16,7 +16,7 @@ import dataclasses as dcls
 import numpy as onp
 from numpy import sin, exp, sqrt
 from collections.abc import Callable
-from src.symmetry import cyclic_group
+from src.named_groups import cyclic_group
 from src.core import Hom, Endo
 from src.lattice_geometry import (
   basis_vectors,

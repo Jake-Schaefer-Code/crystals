@@ -69,3 +69,11 @@ def tetrahedral_group(*, name: str | None = None, tol: float = 1e-10) -> sym.Fin
     raise ValueError(f"tetrahedral_group closure produced order={action.order}, expected 12")
   return action
 
+
+
+class GaloisGroup(sym.FiniteGroupAction):
+  pass
+
+Gal = GaloisGroup
+
+

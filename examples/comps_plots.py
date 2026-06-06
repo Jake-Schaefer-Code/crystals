@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Iterable, Sequence
 import matplotlib.pyplot as plt
 import numpy as onp
-from matplotlib.patches import Circle
+from matplotlib.patches import Circle, Polygon
 from mpl_toolkits.mplot3d.axes3d import Axes3D
 from matplotlib.axes import Axes
 
@@ -62,6 +62,301 @@ SOFT_COULOMB_DEFAULTS = {"depth": 1.65, "softening": 0.40}
 DEFAULT_RADIAL_GRID = {"r_min": 0.18, "r_max": 8.0, "n_points": 1500}
 SOFT_BOUND_LEVELS = onp.array([-1.00, -0.43, -0.21, -0.12, -0.075])
 SOFT_BOUND_LABELS = [r"$1s$", r"$2s/2p$", r"$3\ell$", r"$4\ell$", r"$5\ell$"]
+
+
+def _unit_vector(vec: Sequence[float], eps: float = 1e-12) -> NDArray:
+  arr = onp.asarray(vec, dtype=float)
+  norm = float(onp.linalg.norm(arr))
+  if norm < eps:
+    raise ValueError("Expected a nonzero vector.")
+  return arr / norm
+
+
+def _cross2(a: Sequence[float], b: Sequence[float]) -> float:
+  ax, ay = onp.asarray(a, dtype=float)
+  bx, by = onp.asarray(b, dtype=float)
+  return float(ax * by - ay * bx)
+
+
+def _ray_segment_intersection(
+  origin: Sequence[float],
+  direction: Sequence[float],
+  p0: Sequence[float],
+  p1: Sequence[float],
+  *,
+  eps: float = 1e-10,
+) -> tuple[float, float] | None:
+  origin = onp.asarray(origin, dtype=float)
+  direction = onp.asarray(direction, dtype=float)
+  p0 = onp.asarray(p0, dtype=float)
+  p1 = onp.asarray(p1, dtype=float)
+
+  segment = p1 - p0
+  denom = _cross2(direction, segment)
+  if abs(denom) < eps:
+    return None
+
+  delta = p0 - origin
+  t_ray = _cross2(delta, segment) / denom
+  t_seg = _cross2(delta, direction) / denom
+  if t_ray < eps or t_seg < -eps or t_seg > 1.0 + eps:
+    return None
+  return t_ray, t_seg
+
+
+def _first_polygon_hit(
+  origin: Sequence[float],
+  direction: Sequence[float],
+  polygon: NDArray,
+  *,
+  exclude_edge: int | None = None,
+  eps: float = 1e-10,
+) -> tuple[int, NDArray] | None:
+  origin = onp.asarray(origin, dtype=float)
+  direction = onp.asarray(direction, dtype=float)
+  best_hit: tuple[float, int] | None = None
+
+  nverts = len(polygon)
+  for edge_idx in range(nverts):
+    if edge_idx == exclude_edge:
+      continue
+    p0 = polygon[edge_idx]
+    p1 = polygon[(edge_idx + 1) % nverts]
+    hit = _ray_segment_intersection(origin, direction, p0, p1, eps=eps)
+    if hit is None:
+      continue
+    t_ray, _ = hit
+    if best_hit is None or t_ray < best_hit[0]:
+      best_hit = (t_ray, edge_idx)
+
+  if best_hit is None:
+    return None
+
+  t_ray, edge_idx = best_hit
+  return edge_idx, origin + t_ray * direction
+
+
+def _edge_outward_normal(p0: Sequence[float], p1: Sequence[float]) -> NDArray:
+  edge = onp.asarray(p1, dtype=float) - onp.asarray(p0, dtype=float)
+  return _unit_vector([edge[1], -edge[0]])
+
+
+def _refract_direction(
+  incident: Sequence[float],
+  normal_12: Sequence[float],
+  n1: float,
+  n2: float,
+  *,
+  eps: float = 1e-12,
+) -> NDArray | None:
+  """
+  Refract a unit incident ray across an interface.
+
+  `normal_12` must point from medium 1 into medium 2.
+  """
+  incident = _unit_vector(incident)
+  normal_12 = _unit_vector(normal_12)
+
+  tangential = incident - onp.dot(incident, normal_12) * normal_12
+  transmitted_tangent = (n1 / n2) * tangential
+  tangent_sq = float(onp.dot(transmitted_tangent, transmitted_tangent))
+  if tangent_sq > 1.0 + eps:
+    return None
+
+  normal_mag = onp.sqrt(max(0.0, 1.0 - tangent_sq))
+  return _unit_vector(transmitted_tangent + normal_mag * normal_12)
+
+
+def _equilateral_prism_vertices(
+  side: float,
+  *,
+  center: tuple[float, float] = (0.0, 0.0),
+) -> NDArray:
+  height = 0.5 * onp.sqrt(3.0) * side
+  cx, cy = center
+  return onp.array([
+    [cx - 0.5 * side, cy - height / 3.0],
+    [cx + 0.5 * side, cy - height / 3.0],
+    [cx, cy + 2.0 * height / 3.0],
+  ], dtype=float)
+
+
+def _wavelength_to_rgb(wavelength_nm: float, gamma: float = 0.8) -> tuple[float, float, float]:
+  wl = float(onp.clip(wavelength_nm, 380.0, 780.0))
+  if wl < 440.0:
+    r, g, b = -(wl - 440.0) / 60.0, 0.0, 1.0
+  elif wl < 490.0:
+    r, g, b = 0.0, (wl - 440.0) / 50.0, 1.0
+  elif wl < 510.0:
+    r, g, b = 0.0, 1.0, -(wl - 510.0) / 20.0
+  elif wl < 580.0:
+    r, g, b = (wl - 510.0) / 70.0, 1.0, 0.0
+  elif wl < 645.0:
+    r, g, b = 1.0, -(wl - 645.0) / 65.0, 0.0
+  else:
+    r, g, b = 1.0, 0.0, 0.0
+
+  if wl < 420.0:
+    scale = 0.3 + 0.7 * (wl - 380.0) / 40.0
+  elif wl < 701.0:
+    scale = 1.0
+  else:
+    scale = 0.3 + 0.7 * (780.0 - wl) / 79.0
+
+  rgb = scale * onp.array([r, g, b], dtype=float)
+  return tuple(onp.power(onp.clip(rgb, 0.0, 1.0), gamma))
+
+
+def make_prism_dispersion_figure(
+  *,
+  prism_side: float = 2.7,
+  beam_height: float = 0.08,
+  beam_start_x: float = -5.5,
+  exit_length: float = 4.8,
+  wavelengths_nm: Sequence[float] = (700.0, 650.0, 610.0, 580.0, 540.0, 500.0, 460.0, 430.0),
+  air_index: float = 1.0,
+  cauchy_A: float = 1.08,
+  cauchy_B: float = 0.0080,
+  background: str = "transparent",
+  prism_color: str = "#cfcfd6",
+  prism_fill_alpha: float = 0.0,
+  beam_color: str | None = None,
+  figsize: tuple[float, float] = (12.0, 4.8),
+) -> plt.Figure:
+  """
+  Plot a stylized prism-dispersion figure with simple 2D geometric optics.
+
+  The refractive index uses a Cauchy-law fit
+  n(lambda) = A + B / lambda^2 with lambda measured in micrometers.
+  """
+  prism = _equilateral_prism_vertices(prism_side)
+  source = onp.array([beam_start_x, beam_height], dtype=float)
+  incident = onp.array([1.0, 0.0], dtype=float)
+
+  entry_hit = _first_polygon_hit(source, incident, prism)
+  if entry_hit is None:
+    raise ValueError("Incoming ray does not intersect the prism.")
+
+  entry_edge, entry_point = entry_hit
+  entry_p0 = prism[entry_edge]
+  entry_p1 = prism[(entry_edge + 1) % len(prism)]
+  entry_normal = -_edge_outward_normal(entry_p0, entry_p1)
+
+  inside_segments: list[tuple[NDArray, NDArray, tuple[float, float, float]]] = []
+  outside_segments: list[tuple[NDArray, NDArray, tuple[float, float, float]]] = []
+
+  for wavelength_nm in wavelengths_nm:
+    wavelength_um = wavelength_nm / 1000.0
+    glass_index = cauchy_A + cauchy_B / (wavelength_um**2)
+    inside_dir = _refract_direction(incident, entry_normal, air_index, glass_index)
+    if inside_dir is None:
+      continue
+
+    inside_origin = entry_point + 1e-6 * inside_dir
+    exit_hit = _first_polygon_hit(
+      inside_origin,
+      inside_dir,
+      prism,
+      exclude_edge=entry_edge,
+    )
+    if exit_hit is None:
+      continue
+
+    exit_edge, exit_point = exit_hit
+    exit_p0 = prism[exit_edge]
+    exit_p1 = prism[(exit_edge + 1) % len(prism)]
+    exit_normal = _edge_outward_normal(exit_p0, exit_p1)
+    exit_dir = _refract_direction(inside_dir, exit_normal, glass_index, air_index)
+    if exit_dir is None:
+      continue
+
+    color = _wavelength_to_rgb(wavelength_nm)
+    inside_segments.append((entry_point.copy(), exit_point.copy(), color))
+    outside_segments.append((exit_point.copy(), exit_point + exit_length * exit_dir, color))
+
+  fig, ax = plt.subplots(figsize=figsize, constrained_layout=True)
+
+  if background == "transparent":
+    fig.patch.set_alpha(0.0)
+    ax.patch.set_alpha(0.0)
+  elif background == "white":
+    fig.patch.set_facecolor("white")
+    ax.set_facecolor("white")
+  elif background == "black":
+    fig.patch.set_facecolor("black")
+    ax.set_facecolor("black")
+  else:
+    raise ValueError("background must be 'transparent', 'white', or 'black'.")
+
+  if beam_color is None:
+    beam_color = "white" if background == "black" else "#111111"
+
+  ax.add_patch(
+    Polygon(
+      prism,
+      closed=True,
+      facecolor=prism_color,
+      edgecolor="none",
+      alpha=prism_fill_alpha,
+      zorder=0,
+    )
+  )
+
+  ax.plot(
+    [source[0], entry_point[0]],
+    [source[1], entry_point[1]],
+    color=beam_color,
+    lw=2.8,
+    solid_capstyle="round",
+  )
+
+  for start, stop, color in inside_segments:
+    ax.plot(
+      [start[0], stop[0]],
+      [start[1], stop[1]],
+      color=color,
+      lw=1.5,
+      alpha=0.35,
+      solid_capstyle="round",
+    )
+
+  if inside_segments:
+    mid_start, mid_stop, _ = inside_segments[len(inside_segments) // 2]
+    ax.plot(
+      [mid_start[0], mid_stop[0]],
+      [mid_start[1], mid_stop[1]],
+      color=beam_color,
+      lw=1.4,
+      alpha=0.9,
+      solid_capstyle="round",
+    )
+
+  for start, stop, color in outside_segments:
+    ax.plot(
+      [start[0], stop[0]],
+      [start[1], stop[1]],
+      color=color,
+      lw=2.9,
+      solid_capstyle="round",
+    )
+
+  prism_outline = onp.vstack([prism, prism[0]])
+  ax.plot(
+    prism_outline[:, 0],
+    prism_outline[:, 1],
+    color=prism_color,
+    lw=2.2,
+    solid_joinstyle="round",
+  )
+
+  points = [source, entry_point, *prism, *(stop for _, stop, _ in outside_segments)]
+  coords = onp.vstack(points)
+  pad = 0.45
+  ax.set_xlim(coords[:, 0].min() - pad, coords[:, 0].max() + pad)
+  ax.set_ylim(coords[:, 1].min() - pad, coords[:, 1].max() + pad)
+  ax.set_aspect("equal")
+  ax.axis("off")
+  return fig
 
 
 def _draw_crosshair(

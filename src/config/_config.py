@@ -1,5 +1,4 @@
 # src/config/_config.py
-# ported from my CEM library
 from __future__ import annotations
 import dataclasses as dcls
 from enum import Enum, auto
@@ -13,14 +12,7 @@ from typing_extensions import override
 # TODO fix - src.core imported jax, causing timeout
 # from src.core import ReplaceMixin
 from src.core.static_types import ReplaceMixin
-
-# TODO read from somewhere?
-LIBRARY_NAME = "cem"
-ENV_PREFIX   = "CEM_"   # all env keys must be prefixed
-
-# TODO also read from somewhere
-DEFAULT_USER  = "jacob.schaefer"
-DEFAULT_GROUP = "ligo.sim.o3.cbc.testgr.tiger"
+from src.config._info import LIBRARY_NAME, ENV_PREFIX, DEFAULT_USER, DEFAULT_GROUP
 
 
 class ModuleDirs(Enum):

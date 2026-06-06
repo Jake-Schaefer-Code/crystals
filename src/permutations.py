@@ -259,7 +259,7 @@ def generated_group(
 
 
 
-def perm_power(p, k):
+def power(p, k):
   r""" get power of permuatation """
   out = identity_perm(len(p))
   # TODO scan/vmap
@@ -267,6 +267,7 @@ def perm_power(p, k):
     out = compose(p, out)
   return out
 
+perm_power = power
 
 def sgn(p):
   r""" get sign of permuatation """
@@ -505,6 +506,9 @@ class PermutationGroup:
   def symmetric(cls, n: int, *, name: str | None = None) -> "PermutationGroup":
     return cls(tuple(it.permutations(range(n))), name=name or f"S{n}")
 
+  # @staticmethod
+  # def symmetric_stream()
+
   @classmethod
   def generated(
     cls,
@@ -539,6 +543,10 @@ class PermutationGroup:
   def conjugacy_class_representatives(self) -> tuple[Permutation, ...]:
     return conjugacy_class_representatives(self.elements)
 
+  def conjugacy_class_sizes(self) -> dict[Permutation, int]:
+    classes = conjugacy_classes(self.elements)
+    return {min(clg): len(clg) for clg in classes}
+
   def commutator_subgroup(
     self,
     *,
@@ -561,3 +569,19 @@ class PermutationGroup:
 
   def class_sizes_by_cycle_type(self) -> dict[tuple[int, ...], int]:
     return {ct: len(cls) for ct, cls in self.classes_by_cycle_type().items()}
+
+
+
+
+def substitute_roots(sigma, roots):
+  """Return (alpha_{sigma(0)}, ..., alpha_{sigma(n-1)})."""
+  if len(sigma) != len(roots):
+    raise ValueError("permutation and roots must have the same length")
+  return tuple(roots[sigma[i]] for i in range(len(sigma)))
+
+def act_on_indexed_data(sigma, data):
+  """Left action on indexed data: (sigma · x)_i = x_{sigma^{-1}(i)}."""
+  if len(sigma) != len(data):
+    raise ValueError("permutation and data must have the same length")
+  sigma_inv = inverse_perm(sigma)
+  return tuple(data[sigma_inv[i]] for i in range(len(sigma)))

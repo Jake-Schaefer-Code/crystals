@@ -174,7 +174,7 @@ def make_triangular_lattice(n1: int, n2: int, a=1.0):
   """
   A = canonical_basis_2d(Bravais2D.TRIANGULAR, scale=a)
   sites = lattice_sites(max(n1, n2), A)
-  return onp.array(sites), A
+  return onp.array(sites, dtype=onp.float64), A
 
 
 def triangle_pair_motif(side: float = 1.0, theta0: float = 0.0):
