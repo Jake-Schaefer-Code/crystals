@@ -4,15 +4,16 @@
 The existing notebooks mostly represent symmetry operations as ``(M, t)``
 pairs acting by ``x -> M x + t``.  This module keeps that convention while
 adding a small amount of structure: named affine operations, finite group
-actions, orbits, characters, and Reynolds/projector helpers.
+actions, orbits, characters, and Reynbolds/projector helpers.
 """
 
 from __future__ import annotations
+from typing import TypeVar, Generic, Protocol
 from collections.abc import Iterable, Iterator, Sequence
 import dataclasses as dcls
 import numpy as onp
-from src import geo_ops_utils as gops
 from src.core.static_types import ReplaceMixin
+from src.symmetry.core import Field, F
 
 NDArray = onp.ndarray
 _2PI = 2.0 * onp.pi
@@ -527,61 +528,8 @@ def S(v: NDArray) -> NDArray:
   # (Sv)_n = v_{n-1}
   return onp.roll(v, 1)
 
-def identity(dim: int = 2, *, inversion: bool = False, label: str = "e") -> AffineOperation:
-  matrix = -onp.eye(dim) if inversion else onp.eye(dim)
-  return AffineOperation(matrix, onp.zeros(dim), label)
-
-def about(center: NDArray, op: AffineOperation) -> AffineOperation:
-  M, t = op.matrix, op.translation
-  return AffineOperation(M, center - M @ center + t)
 
 
-def rotation2d(theta: float, *, label: str | None = None) -> AffineOperation:
-  return AffineOperation(_snap(gops.rot_mat(theta)), label=label or f"r({theta:g})")
-
-
-def rotation3d(theta: float, axis: NDArray, *, label: str | None = None) -> AffineOperation:
-  return AffineOperation(_snap(gops.q_rot_mat(theta, axis)), label=label or f"r({theta:g})")
-
-
-def reflection(
-  normal: NDArray,
-  translation: NDArray | None = None,
-  *,
-  label: str = "s",
-) -> AffineOperation:
-  """
-  R = I - 2nn^T
-  
-  Parameters:
-  ----------------
-  normal : arraylike
-      The normal vector to the plane.
-      
-  Returns:
-  --------
-  R : NDArray, shape = (ndim, ndim)
-  """
-  normal = onp.asarray(normal, dtype=float)
-  normal = normal / onp.linalg.norm(normal)
-  matrix = onp.eye(len(normal)) - 2.0 * onp.outer(normal, normal)
-  return AffineOperation(_snap(matrix), translation, label)
-
-
-def glide_reflection(normal: NDArray, translation: NDArray, *, label: str = "g") -> AffineOperation:
-  return reflection(normal, translation, label=label)
-
-def screw_rotation(theta: float, axis: NDArray, translation: NDArray) -> AffineOperation:
-  matrix = gops.q_rot_mat(theta, axis)
-  translation = translation * axis
-  return AffineOperation(_snap(matrix), translation)
-
-def conjugate_action(action: FiniteGroupAction, op: AffineOperation):
-  op_inv = op.inverse()
-  return FiniteGroupAction(
-    [op.compose(g).compose(op_inv) for g in action],
-    name=action.name,
-  )
 
 def generated_group(
   generators: Sequence[AffineOperation | tuple[NDArray, NDArray]],
@@ -604,7 +552,7 @@ def generated_group(
     packed = onp.concatenate([data.real, data.imag])
     return tuple(onp.round(packed / tol).astype(onp.int64).tolist())
 
-
+  from src.symmetry.operations import identity
   ident = identity(dim)
   seen = {key(ident): ident}
   frontier = [ident]
@@ -677,3 +625,10 @@ def symmetrize(func, *xi: NDArray, sym_ops, domain=None):
     xp = [X_prime[i].reshape(x.shape) for i, x in enumerate(xi)]
     f_symm += apply_func(func, *xp, domain=domain)
   return f_symm/len(sym_ops)
+
+
+class GaloisGroup(FiniteGroupAction):
+  pass
+
+Gal = GaloisGroup
+

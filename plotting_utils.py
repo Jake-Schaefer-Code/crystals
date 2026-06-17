@@ -14,6 +14,7 @@ from src import crystal_funcs as cfuncs
 from src import coordinates as cconv
 from src import planar_geometry as pgeom
 import src.symmetry as sym
+
 from src.core import NumericNDArray as NDArray
 
 

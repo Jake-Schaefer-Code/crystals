@@ -2,6 +2,7 @@
 from __future__ import annotations
 import dataclasses as dcls
 import numpy as onp
+from typing import Any
 # from src import crystal_funcs as cfuncs
 import src.symmetry as sym
 from IPython.display import display, Math, Markdown
@@ -135,11 +136,21 @@ def print_symmetry_operations(sym_ops: list[sym.AffineOperation]):
     display(Markdown("---"))
 
 
-def display_char_table(table):
-  col_sep = "|".join("c" for _ in range(len(table[0])))
+def display_char_table(table: list[list]|dict[str, list]):
+  if isinstance(table, dict):
+    chars = tuple(table.values())
+    r = len(chars[0])
+  else:
+    r = len(table[0])
+    d = len(table)
+    labels = [f"V_{i}" for i in range(d)]
+    table = dict(zip(labels, table))
+
+  col_sep = "|".join("c" for _ in range(r + 1))
   rows = []
-  for row in table:
-    rows.append(" & ".join(map(str, row)))
+  for V, χ_row in table.items():
+    chars = " & ".join(map(str, χ_row))
+    rows.append(f"{V} & {chars}")
 
   row_sep = r" \\ \hline "
   body = str.join(row_sep, rows) + row_sep

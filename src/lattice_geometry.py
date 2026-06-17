@@ -5,7 +5,7 @@ import numpy as onp
 from numpy import sin, cos, sqrt
 import src.symmetry as sym
 from src import crystal_funcs as cfuncs
-import src.named_groups as groups
+import src.symmetry.named_groups as groups
 
 NDArray = onp.ndarray
 

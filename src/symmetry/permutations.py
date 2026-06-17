@@ -5,13 +5,18 @@ from collections.abc import Sequence
 import dataclasses as dcls
 import math
 from typing import Never
+from typing import TypeVar, Generic, Protocol
 import numpy as onp
 import itertools as it
 import re
+from src.symmetry.core import Field, F
 
 Permutation = tuple[int, ...]
 Transposition = tuple[int, int]
 Cycle = tuple[int, ...]
+
+
+
 
 _CYCLE_BLOCK_RE = re.compile(r"\(([^()]*)\)")
 
@@ -302,7 +307,7 @@ def commutator_perm(p: Permutation, q: Permutation) -> Permutation:
 commutator = commutator_perm
 
 
-def conjugacy_class(p: Permutation, group: tuple[Permutation, ...] | list[Permutation]) -> tuple[Permutation, ...]:
+def conjugacy_class(p: Permutation, group: tuple[Permutation, ...] | list[Permutation]|PermutationGroup) -> tuple[Permutation, ...]:
   r"""Conjugacy class of `p` inside the supplied permutation group."""
   seen = set()
   cls = []
@@ -314,7 +319,11 @@ def conjugacy_class(p: Permutation, group: tuple[Permutation, ...] | list[Permut
     cls.append(q)
   return tuple(cls)
 
+def conjugacy_class_representative(p: Permutation, group: tuple[Permutation, ...] | list[Permutation]|PermutationGroup) -> Permutation:
+  r""" Get conjugacy class representative for a permutation given a group (sorts based on min) """
+  return min(conjugacy_class(p, group))
 
+# TODO this should be ordered with identity first
 def conjugacy_classes(group: tuple[Permutation, ...] | list[Permutation]) -> tuple[tuple[Permutation, ...], ...]:
   r"""Partition a finite permutation group into subgroup conjugacy classes."""
   remaining = set(group)
@@ -362,7 +371,13 @@ def commutator_subgroup(
     if tuple(sorted(g)) != expected:
       raise ValueError(f"invalid group element: {g!r}")
 
-  gens = group if generators is None else tuple(tuple(int(i) for i in g) for g in generators)
+  if generators is None:
+    gens = group
+  else:
+    # gens = tuple(map(lambda g: tuple(map(int, g)), generators))
+    # gens = tuple(tuple(map(int, g)) for g in generators)
+    gens = tuple(tuple(int(i) for i in g) for g in generators)
+
   if not gens:
     raise ValueError("generators must be nonempty when supplied")
   for g in gens:
@@ -463,7 +478,7 @@ class PermElt(tuple):
   _name: str = ''
   def __new__(cls, *a, name: str=''):
     obj = tuple.__new__(PermElt, a)
-    obj._name = name if name is not '' else to_cycle_notation(obj)
+    obj._name = name if name != '' else to_cycle_notation(obj)
     return obj
 
   def __rmul__(self, other: PermElt):
@@ -504,7 +519,11 @@ class PermutationGroup:
 
   @classmethod
   def symmetric(cls, n: int, *, name: str | None = None) -> "PermutationGroup":
-    return cls(tuple(it.permutations(range(n))), name=name or f"S{n}")
+    return cls(
+      tuple(it.permutations(range(n))),
+      name=name or f"S{n}",
+      generators=_symmetric_generators(n),
+    )
 
   # @staticmethod
   # def symmetric_stream()
@@ -585,3 +604,116 @@ def act_on_indexed_data(sigma, data):
     raise ValueError("permutation and data must have the same length")
   sigma_inv = inverse_perm(sigma)
   return tuple(data[sigma_inv[i]] for i in range(len(sigma)))
+
+
+def _symmetric_generators(n: int) -> tuple[Permutation, ...]:
+  if n < 2:
+    return ()
+
+  gens = [from_cycle_notation("(1,2)", degree=n)]
+  if n >= 3:
+    gens.append(from_cycle_notation("(" + ",".join(map(str, range(1, n + 1))) + ")", degree=n))
+  return tuple(gens)
+
+
+def _alternating_generators(n: int) -> tuple[Permutation, ...]:
+  if n < 3:
+    return ()
+  return tuple(
+    from_cycle_notation(f"(1,2,{k})", degree=n)
+    for k in range(3, n + 1)
+  )
+
+
+
+def Cn(n):
+  gen = from_cycle_notation("(" + ",".join(map(str, range(1, n + 1))) + ")", degree=n)
+  return PermutationGroup.generated((gen,), name=f"C{n}")
+
+def An(n):
+  Sn = PermutationGroup.symmetric(n)
+  return PermutationGroup(
+    tuple(g for g in Sn if sgn(g) == 1),
+    name=f"A{n}",
+    generators=_alternating_generators(n),
+  )
+
+
+def dist(G, terms):
+  out = {g: 0.0 for g in G}
+  for c, g in terms:
+    out[g] += float(c)
+  return out
+
+def convolve(G, P, Q):
+  out = {g: 0.0 for g in G}
+  for g, pg in P.items():
+    for h, qh in Q.items():
+      if pg and qh:
+        out[compose(g, h)] += pg * qh
+  return out
+
+def power_dist(G, P, n):
+  e = identity_perm(G.degree)
+  out = {g: float(g == e) for g in G}
+  base = P
+  while n:
+    if n & 1:
+      out = convolve(G, out, base)
+    n >>= 1
+    if n:
+      base = convolve(G, base, base)
+  return out
+
+def variation_distance(P, Q, G):
+  if Q is None:
+    Q = {g: 1.0 / G.order for g in G}
+  return 0.5 * sum(abs(P[g] - Q[g]) for g in G)
+
+
+class CharG(Generic[F]):
+  r""" Group does not determine a character; it only determines the domain and conjugacy classes """
+  def __init__(self, data: dict[Permutation, F], group: PermutationGroup):
+    self.group = group
+    self.class_reps = group.conjugacy_class_representatives()
+    self.class_sizes = group.conjugacy_class_sizes()
+    normed = {}
+    for key, val in data.items():
+      rep = conjugacy_class_representative(key, group)
+      if rep in normed and normed[rep] != val:
+        raise ValueError(f"inconsistent values on class {rep!r}")
+      normed[rep] = val
+
+    missing = [rep for rep in self.class_reps if rep not in normed]
+    if missing:
+      raise ValueError(f"missing values for classes {missing!r}")
+
+    # get_rep = lambda p: perms.conjugacy_class_representative(p, group)
+    # normed = dict(zip(map(get_rep, data.keys()), data.values()))
+    self.data = normed
+
+  def __getitem__(self, key) -> F:
+    rep = conjugacy_class_representative(key, self.group)
+    return self.data[rep]
+
+  def __or__(self, other: 'CharG'):
+    r""" Inner product on G!!! """
+    return sum(
+      self.class_sizes[rep] * onp.conj(self[rep]) * other[rep] 
+      for rep in self.class_reps
+    ) / self.group.order
+  
+  def values_on_classes(self):
+    return [self[rep] for rep in self.class_reps]
+
+  def decompose(self, irrep_table):
+    return {
+      name: (self|irrep)
+      for name, irrep in irrep_table.items()
+    }
+  @classmethod
+  def from_row(cls, row: list[F], group: PermutationGroup):
+    reps = group.conjugacy_class_representatives()
+    return cls(dict(zip(reps, row)), group)
+
+

@@ -2,7 +2,8 @@
 from __future__ import annotations
 import math
 import numpy as onp
-import src.symmetry as sym
+import src.symmetry.symmetry as sym
+from src.symmetry.operations import rotation2d, rotation3d, reflection
 
 NDArray = onp.ndarray
 _2PI = 2.0 * onp.pi
@@ -20,11 +21,11 @@ def cyclic_group(
   if order <= 0:
     raise ValueError("order must be positive")
   if dim == 2:
-    ops = [sym.rotation2d(i * _2PI / order, label=f"r^{i}") for i in range(order)]
+    ops = [rotation2d(i * _2PI / order, label=f"r^{i}") for i in range(order)]
   elif dim == 3:
     if axis is None:
       raise ValueError("axis is required for a 3D cyclic group")
-    ops = [sym.rotation3d(i * _2PI / order, axis, label=f"r^{i}") for i in range(order)]
+    ops = [rotation3d(i * _2PI / order, axis, label=f"r^{i}") for i in range(order)]
   else:
     raise ValueError(f"cyclic_group only supports dim=2 or dim=3, got {dim}")
   return sym.FiniteGroupAction(ops, name=name or f"C{order}")
@@ -38,13 +39,13 @@ def dihedral_group(order: int, *, name: str | None = None) -> sym.FiniteGroupAct
   if order <= 0:
     raise ValueError("order must be positive")
 
-  mirror = sym.reflection(onp.array([0.0, 1.0]), label="s")
+  mirror = reflection(onp.array([0.0, 1.0]), label="s")
   ops: list[sym.AffineOperation] = []
   for i in range(order):
-    rot = sym.rotation2d(i * _2PI / order, label=f"r^{i}")
+    rot = rotation2d(i * _2PI / order, label=f"r^{i}")
     ops.append(rot)
   for i in range(order):
-    rot = sym.rotation2d(i * _2PI / order, label=f"r^{i}")
+    rot = rotation2d(i * _2PI / order, label=f"r^{i}")
     ops.append(rot.compose(mirror, label=f"r^{i}s"))
   return sym.FiniteGroupAction(ops, name=name or f"D{order}")
 
@@ -59,8 +60,8 @@ def tetrahedral_group(*, name: str | None = None, tol: float = 1e-10) -> sym.Fin
 
   axis_111 = onp.array([1.0, 1.0, 1.0])
   axis_111 = axis_111 / onp.linalg.norm(axis_111)
-  a3 = sym.rotation3d(_2PI / 3.0, axis_111, label="a3")  # order 3
-  b2 = sym.rotation3d(onp.pi, onp.array([1.0, 0.0, 0.0]), label="b2")  # order 2
+  a3 = rotation3d(_2PI / 3.0, axis_111, label="a3")  # order 3
+  b2 = rotation3d(onp.pi, onp.array([1.0, 0.0, 0.0]), label="b2")  # order 2
 
   # A_4
   order = int(math.factorial(4)/2)
@@ -69,11 +70,5 @@ def tetrahedral_group(*, name: str | None = None, tol: float = 1e-10) -> sym.Fin
     raise ValueError(f"tetrahedral_group closure produced order={action.order}, expected 12")
   return action
 
-
-
-class GaloisGroup(sym.FiniteGroupAction):
-  pass
-
-Gal = GaloisGroup
 
 

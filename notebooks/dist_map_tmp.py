@@ -192,7 +192,7 @@ rot_order = 4
 dθ = 2 * onp.pi / rot_order
 qRM = sym.rotation3d
 # p4 = [qRM(i * dθ, B.e3) for i in range(1, rot_order)]
-# p4.append(sym.identity(ndim))
+# p4.append(src.identity(ndim))
 p4 = sym.cyclic_group(order=4, dim=ndim, axis=B.e3)
 
 
@@ -217,7 +217,7 @@ Gp4 = sym.FiniteGroupAction(tuple(p4), name="p4")
 Gp4m = sym.FiniteGroupAction((*p4, *m), name="p4m")
 Gp4gm = sym.FiniteGroupAction((*p4, *g, *m), name="p4gm")
 
-import src.named_groups as groups
+import src.symmetry.named_groups as groups
 A4 = groups.tetrahedral_group()
 
 plot_func(func_xyz, *grid, center=center, sym_ops=[Gp4gm, Gp4m, Gp4, A4])
