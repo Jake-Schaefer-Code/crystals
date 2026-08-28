@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 
 import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
 import numpy as onp
 from scipy.linalg import expm
 
@@ -13,7 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
   sys.path.insert(0, str(PROJECT_ROOT))
 
 from plotting_utils import save_path
-import src.permutations as perms
+import src.symmetry.permutations as perms
 import src.quantum_symmetry as qsym
 
 Q8 = qsym.quaternion_group_rep()
@@ -68,13 +69,11 @@ def operator_retention_heatmap(Lsuper: onp.ndarray, t: float) -> onp.ndarray:
   return out
 
 
-def annotate_heatmap(ax, mat: onp.ndarray, *, title: str) -> None:
+def annotate_heatmap(ax: Axes, mat: onp.ndarray, *, title: str) -> None:
   im = ax.imshow(mat, cmap="viridis", vmin=0.0, vmax=1.0)
-  ax.set_title(title)
+  ax.set(title=title, xlabel="ket index", ylabel="bra index")
   ax.set_xticks(range(len(LABELS)), labels=LABELS)
   ax.set_yticks(range(len(LABELS)), labels=LABELS)
-  ax.set_xlabel("ket index")
-  ax.set_ylabel("bra index")
   for i in range(mat.shape[0]):
     for j in range(mat.shape[1]):
       val = mat[i, j]

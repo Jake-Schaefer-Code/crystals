@@ -73,6 +73,7 @@ def perm_hom(perm):
   return M
 
 
+
 def perm_char(p: Permutation) -> int:
   return int(onp.trace(perm_hom(p)))
 
@@ -588,6 +589,9 @@ class PermutationGroup:
 
   def class_sizes_by_cycle_type(self) -> dict[tuple[int, ...], int]:
     return {ct: len(cls) for ct, cls in self.classes_by_cycle_type().items()}
+
+  def matrices(self):
+    return {p: perm_hom(p) for p in self.elements}
 
 
 

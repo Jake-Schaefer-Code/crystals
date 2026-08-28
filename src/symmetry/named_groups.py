@@ -72,3 +72,8 @@ def tetrahedral_group(*, name: str | None = None, tol: float = 1e-10) -> sym.Fin
 
 
 
+
+def cyclic_unitary_rep(generator: onp.ndarray, order: int, *, name=""):
+  G = tuple(range(order))
+  mats = {k: onp.linalg.matrix_power(generator, k) for k in G}
+  return sym.Representation(group=G, matrices=mats, name=name or f"C{order} rep")

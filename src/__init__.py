@@ -1,1 +1,0 @@
-from src.symmetry import permutations
