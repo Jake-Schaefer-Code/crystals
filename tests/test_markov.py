@@ -157,3 +157,15 @@ def test_generalized_landauer_gap_is_the_entropy_decrease():
   _, gen_landauer = mk.bound(p0, G, N)
   pN = onp.linalg.matrix_power(onp.asarray(G), N) @ onp.asarray(p0)
   assert float(gen_landauer) == pytest.approx(float(mk.H(p0) - mk.H(jnp.asarray(pN))), abs=1e-10)
+
+
+def test_periodic_mmc_curves_match_the_closed_forms_and_the_stationary_state():
+  rng = onp.random.default_rng(13)
+  G, p0 = _stochastic(rng, 5), _dist(rng, 5)
+  pts, pmmcs, pi, kl = mk.periodic_mmc_curves(G, p0, 8)
+  assert pts.shape == (9, 5) and pmmcs.shape == (8,)
+  for n in range(1, 9):
+    assert float(pmmcs[n - 1]) == pytest.approx(float(mk.pmmc2(p0, G, n)), abs=1e-10)
+  assert onp.allclose(G @ pi, pi, atol=1e-10) and float(pi.sum()) == pytest.approx(1.0)
+  assert float(kl) == pytest.approx(float(mk.KL(p0, pi)))
+  assert float(kl) >= 0.0 and onp.all(onp.diff(onp.asarray(pmmcs)) > -1e-12)    # cost accumulates

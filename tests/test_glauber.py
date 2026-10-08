@@ -315,3 +315,18 @@ def test_asymmetric_couplings_dissipate_in_the_steady_state():
   rows, _, rates, K = _sk(N, Jasym, beta)
   pi = gl.stationary_distribution(onp.asarray(K))
   assert float(gl.sk_ep_rate(jnp.asarray(pi), rows, rates)) > 1e-4
+
+
+def test_sk_observables_run_and_report_zero_dissipation_for_symmetric_couplings():
+  r"""Regression: ``observables_for_sk`` passed ``(spins, Jij, Theta)`` to ``sk_fields(Jij, spins, Theta)``."""
+  N, beta = 4, 0.7
+  rng = onp.random.default_rng(7)
+  A = rng.normal(size=(N, N))
+  Jsym = (A + A.T) / 2
+  onp.fill_diagonal(Jsym, 0.0)
+  rows, spins, _ = gl.make_asymmetric_sk_graph(N, Jsym, onp.zeros(N))
+  abs_m, ep_per_spin = gl.observables_for_sk(
+    beta, jnp.asarray(Jsym), onp.asarray(spins, dtype=float), rows, N, jnp.zeros(N), 1.0
+  )
+  assert 0.0 <= abs_m <= 1.0
+  assert float(ep_per_spin) == pytest.approx(0.0, abs=1e-6)

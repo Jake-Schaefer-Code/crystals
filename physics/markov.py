@@ -11,7 +11,10 @@ column-stochastic matrix ``G`` acting as ``p -> G @ p``. Entropies use ``0 log 0
 - ``mmc``, ``pmmc``, ``pmmc2``, ``pop``: mismatch cost of a fixed prior, and of the optimal periodic
   prior (``pop`` returns the averaged distribution that is that prior).
 
-Moved from ``notebooks/stoch_thermo/utils.py`` unchanged.
+- ``periodic_mmc_curves``: the orbit, ``pmmc`` for every horizon, and the stationary state in one call.
+
+Moved from ``notebooks/stoch_thermo/utils.py``; ``pmmc`` now follows the dtype of ``G`` and
+``periodic_mmc_curves`` is the helper that ``DFA.ipynb`` and ``prior.ipynb`` each carried as ``get_stuff``.
 """
 from __future__ import annotations
 
@@ -20,6 +23,7 @@ from jax import Array, lax
 import jax.numpy as jnp
 from jax.scipy.special import xlogy
 from functools import partial
+import numpy as onp
 
 # ---- entropy and KL divergence use convention that 0 log 0 = 0
 # TODO make custom vjp since both branches can participate in autodiff tracing, which is unpleasant
@@ -176,3 +180,24 @@ def pmmc2(p0, G, N):
   return (
     H(jnp.linalg.matrix_power(G, N) @ p0) - H(p0) + N * (H(p_avg) - H(G @ p_avg))
   )
+
+
+def periodic_mmc_curves(G, p0, N_max: int):
+  r"""Orbit, periodic mismatch cost for ``N = 1..N_max``, stationary state and its distance to ``p0``.
+
+  Returns ``(pts, pmmcs, pi, kl)``: ``pts`` is the orbit ``p_0..p_{N_max}`` (``N_max + 1`` rows),
+  ``pmmcs[n-1] = H(p_n) - H(p_0) + n (H(avg_{<n}) - H(G avg_{<n}))``, ``pi`` the eigenvector of ``G``
+  nearest eigenvalue 1 (clipped to be nonnegative and normalized) and ``kl = KL(p0, pi)``.
+  """
+  Ns = jnp.arange(1, N_max + 1)
+  pN, pts = get_traj(G, p0, N_max)
+  p_avgs = jnp.cumsum(pts[:-1], axis=0) / Ns[:, None]
+  Gp_avgs = p_avgs @ G.T
+  landauer = - H(pts[1:], axis=1) + H(p0)
+  pmmcs = - landauer + Ns * (H(p_avgs, axis=1) - H(Gp_avgs, axis=1))
+  vals, vecs = onp.linalg.eig(G)
+  idx = onp.argmin(onp.abs(vals - 1.0))
+  pi = onp.real(vecs[:, idx])
+  pi = onp.clip(pi / pi.sum(), 0, None)
+  kl = KL(p0, pi)
+  return pts, pmmcs, pi, kl

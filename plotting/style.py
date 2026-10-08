@@ -1,6 +1,13 @@
+# plotting/style.py
+r"""Matplotlib parameters for the paper figures (LaTeX text, Computer Modern, vector-safe fonts).
+
+``PAPER_RCPARAMS`` needs a working LaTeX installation because it sets ``text.usetex``.
+"""
 from __future__ import annotations
 
-__mpl_paper_params__ = {
+import matplotlib as mpl
+
+PAPER_RCPARAMS = {
   "font.size": 16,
   "axes.titlesize": 20,
   "axes.labelsize": 16,
@@ -15,3 +22,8 @@ __mpl_paper_params__ = {
   # "font.family": "Helvetica",
   "font.family": "Computer Modern Roman",
 }
+
+
+def use_paper_style() -> None:
+  r""" Apply ``PAPER_RCPARAMS`` globally. """
+  mpl.rcParams.update(PAPER_RCPARAMS)

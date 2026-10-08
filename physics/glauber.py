@@ -928,7 +928,7 @@ def stationary_sk_fast(rows, rates, lam, n_iter):
 
 
 def observables_for_sk(beta, Jij, spins, rows, N, Theta, gamma):
-  fields = sk_fields(spins, Jij, Theta)
+  fields = sk_fields(Jij, spins, Theta)
   rates = get_sk_rates(spins, fields, beta, gamma)
   K = dense_generator_from_rates(rows, rates)
   pi = stationary_distribution(K)
