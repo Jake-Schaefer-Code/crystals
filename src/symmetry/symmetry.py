@@ -8,7 +8,6 @@ actions, orbits, characters, and Reynbolds/projector helpers.
 """
 
 from __future__ import annotations
-from typing import TypeVar, Generic, Protocol
 from collections.abc import Iterable, Iterator, Sequence
 import dataclasses as dcls
 import numpy as onp

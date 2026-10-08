@@ -2,10 +2,36 @@
 from __future__ import annotations
 from pathlib import Path
 from collections.abc import Sequence, Callable
-from typing import Any, TypeAlias, TypeVar, Generic, Protocol #, runtime_checkable, Any
+from typing import Any, Protocol #, runtime_checkable, Any
 # from typing_extensions import dataclass_transform # TypeAliasType
 from typing_extensions import Self
 import dataclasses as dcls
+
+__all__ = [
+  # morphism aliases
+  "Hom",
+  "ArgHom",
+  "BinHom",
+  "BinOp",
+  "BinMap",
+  "SKernel",
+  "TriHom",
+  "Endo",
+  "EndoArgs",
+  "Auto",
+  # value aliases
+  "Shape",
+  "Series",
+  "StaticScalar",
+  # protocols and mixins
+  "Monoid",
+  "ReplaceableLike",
+  "ReplaceMixin",
+  "Loadable",
+  "PyTreeReplaceMixin",
+  "Replaceable",
+  "PyTreeReplaceable",
+]
 
 # if TYPE_CHECKING:
 #   # typeshed-only; not guaranteed to exist at runtime
@@ -14,45 +40,24 @@ import dataclasses as dcls
 #   _DataclassInstance = object  # runtime placeholder
 
 
-# Generic “morphism” types
-T = TypeVar('T') # input batch/type
-S = TypeVar('S')
-K = TypeVar('K')
-CT = TypeVar('CT', covariant=True)
-U = TypeVar('U')      # output batch/type
-P = TypeVar('P')      # params/state pytree
-A = TypeVar('A')      # aux/metrics pytree
-_T = TypeVar('_T')
-_S = TypeVar('_S')
-T1 = TypeVar('T1')
-T2 = TypeVar('T2')
-T3 = TypeVar('T3')
-Ti = TypeVar('Ti') # iterate?
+# Callable contracts describe domains and codomains, not algebraic laws.
+# BinHom/TriHom retain separate Python arguments for product domains.
+type Hom[X, Y] = Callable[[X], Y]
+type ArgHom[**Args, Y] = Callable[Args, Y]
+type BinHom[X1, X2, Y] = Callable[[X1, X2], Y]
+type BinOp[X] = Callable[[X, X], X]
+type BinMap[X, Y] = Callable[[X, X], Y]
+type SKernel[X, K] = Callable[[X, X], K]
+type TriHom[X1, X2, X3, Y] = Callable[[X1, X2, X3], Y]
+type Endo[X] = Hom[X, X]
+type EndoArgs[X, Y] = Callable[[X, Y], tuple[X, Y]]
+# Invertibility requires a runtime law/test; this alias cannot prove it.
+type Auto[X] = Endo[X]
 
-
-Hom  = Callable[[T], U]
-r""" General homomorphism (unary) """
-
-BinHom = Callable[[T1, T2], U]
-r""" Binary homomorphism (two arguments) """
-
-BinOp = Callable[[S, S], S]
-BinMap = Callable[[S, S], U]
-SKernel = Callable[[S, S], K]
-
-TriHom = Callable[[T1, T2, T3], U]
-r""" Ternary homomorphism (three arguments) """
-
-Endo = Callable[[T], T]
-r""" General Endomorphism """
-
-Auto = Endo[T] # automorphism can't encode bijectivity in typing -> synonym
-r""" General Automorphism """
-
-Shape = Sequence[int]
+type Shape = Sequence[int]
 r""" type for array-shape-like objects """
 
-Series: TypeAlias = list[tuple[int, _T]]
+type Series[T] = list[tuple[int, T]]
 r""" Scalar time series, positive integer steps """
 
 StaticScalar = complex|float|int|bool
@@ -62,7 +67,7 @@ StaticScalar = complex|float|int|bool
 class Monoid(Protocol):
   @classmethod
   def empty(cls) -> Self: ...
-  def combine(self, other: 'Monoid'): ...
+  def combine(self, other: Monoid): ...
 
 
 class ReplaceableLike(Protocol):
@@ -99,14 +104,14 @@ class PyTreeReplaceMixin:
     # jdc.asdict delegates correctly as well, but dataclasses.asdict is fine for plain cases
     return dcls.asdict(self)  # pyright: ignore[reportArgumentType]
   @classmethod
-  def from_dict(cls, /, **kw: object) -> 'PyTreeReplaceMixin':
+  def from_dict(cls, /, **kw: object) -> PyTreeReplaceMixin:
     return cls(**kw)
 
 class Replaceable(Protocol):
   def replace(self: Self, /, **kwargs: object) -> Self: ...
 
-class PyTreeReplaceable(Protocol, Generic[CT]):
-  def replace(self, **kw: object) -> 'PyTreeReplaceable[CT]': ...
+class PyTreeReplaceable[CT](Protocol):
+  def replace(self, **kw: object) -> PyTreeReplaceable[CT]: ...
 
   # @classmethod
   # def from_dict(cls: Type[Self], /, **kw) -> Self:

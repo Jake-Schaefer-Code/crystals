@@ -4,8 +4,6 @@ from collections import defaultdict
 from collections.abc import Sequence
 import dataclasses as dcls
 import math
-from typing import Never
-from typing import TypeVar, Generic, Protocol
 import numpy as onp
 import itertools as it
 import re
@@ -14,8 +12,6 @@ from src.symmetry.core import Field, F
 Permutation = tuple[int, ...]
 Transposition = tuple[int, int]
 Cycle = tuple[int, ...]
-
-
 
 
 _CYCLE_BLOCK_RE = re.compile(r"\(([^()]*)\)")
@@ -650,12 +646,11 @@ def dist(G, terms):
   return out
 
 def convolve(G, P, Q):
-  out = {g: 0.0 for g in G}
-  for g, pg in P.items():
-    for h, qh in Q.items():
-      if pg and qh:
-        out[compose(g, h)] += pg * qh
-  return out
+  r""" Convolution of two distributions on ``G``: the product in the group algebra """
+  from src.symmetry.group_algebra import GroupAlgebra  # group_algebra imports this module
+  A = GroupAlgebra.of(G)
+  prod = A.element(P) * A.element(Q)
+  return {g: float(prod[g]) for g in G}
 
 def power_dist(G, P, n):
   e = identity_perm(G.degree)
@@ -675,7 +670,7 @@ def variation_distance(P, Q, G):
   return 0.5 * sum(abs(P[g] - Q[g]) for g in G)
 
 
-class CharG(Generic[F]):
+class CharG[F]:
   r""" Group does not determine a character; it only determines the domain and conjugacy classes """
   def __init__(self, data: dict[Permutation, F], group: PermutationGroup):
     self.group = group

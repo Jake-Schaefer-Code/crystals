@@ -1,3 +1,12 @@
 workspace/*.ipynb
 *.pdf
 *.png
+*.svg
+*__pycache__
+*.pyc
+*.gif
+legacy
+media
+data
+notebooks/media
+agca_jax-master

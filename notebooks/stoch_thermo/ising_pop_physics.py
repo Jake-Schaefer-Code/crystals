@@ -1,6 +1,6 @@
 """Physical analyses of periodic-optimal mismatch in the Curie-Weiss model.
 
-This script extends the finite-state Ising calculations in ``ising.py`` with
+This script extends the finite-state Ising calculations in ``physics/glauber.py`` with
 an exact magnetization-sector reduction.  It generates four figure sets:
 
 1. Identical state dynamics implemented by one effective bath or two physical
@@ -25,6 +25,7 @@ Omit ``--quick`` for the denser publication-oriented sweeps.
 from __future__ import annotations
 
 import argparse
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -34,8 +35,12 @@ import numpy as np
 from scipy.linalg import eigvals, expm
 from scipy.special import gammaln, logsumexp
 
-import ising
-import utils
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+  sys.path.insert(0, str(_REPO_ROOT))
+
+import physics.glauber as ising
+import physics.markov as utils
 
 
 Array = np.ndarray
@@ -126,7 +131,7 @@ def build_sector_model(
     """Construct the exact ``n_spins + 1`` Curie-Weiss birth-death chain.
 
     The energy and symmetric Arrhenius rates match ``make_mean_field_graph``
-    and ``get_rates`` in ``ising.py``:
+    and ``get_rates`` in ``physics/glauber.py``:
 
     ``H = -J (M^2 - n)/(2n) - h M`` and
     ``k_nu(Delta E) = gamma_nu exp(-beta_nu Delta E / 2)``.
@@ -364,7 +369,7 @@ def repeat_map(
 
 
 def validate_sector_reduction() -> dict[str, float]:
-    """Check the reduced generator and heat vectors against ``ising.py``."""
+    """Check the reduced generator and heat vectors against ``physics/glauber.py``."""
 
     n_spins = 5
     J = 0.37
