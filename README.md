@@ -61,7 +61,7 @@ Dependencies run one way: `plotting` imports `physics`, `physics` imports `src`.
 | Crystal and lattice geometry | `src/{coordinates, planar_geometry, geo_ops_utils, crystal_funcs, lattice_geometry, categorization, bases}.py`, `TriMap.py`, `plotting_utils.py`, `unit_cell_utils.py` | numpy, scipy, matplotlib |
 | Finite symmetry and representation theory | `src/symmetry/` (`symmetry`, `permutations`, `operations`, `named_groups`, `group_laws`, `group_algebra`, `young`) | numpy |
 | Fermion antisymmetry and nodes | `src/{invariants, grassmann, exact_gb, exact_poly}.py`, `physics/{nodal, nodal_models, ansatz1d, models1d, vmc}.py`, `plotting/nodal.py` | jax (`exact_*` are pure Python) |
-| Stochastic thermodynamics | `physics/{markov, glauber, ising_sectors, speed_limits, sk_theory, dfa_memory, simplex}.py`, `plotting/{heatmaps, ising_pop, simplex, style}.py` | jax, optax, scipy; diffrax in the ODE helpers |
+| Stochastic thermodynamics | `physics/{markov, glauber, ising_sectors, speed_limits, sk_theory, dfa_memory, simplex, clock_information}.py`, `plotting/{heatmaps, ising_pop, simplex, style, clock_information}.py` | jax, optax, scipy; diffrax in the ODE helpers |
 | Random matrices | `physics/spectral_curves.py`, `plotting/spectral_curves.py` | numpy, scipy, sympy |
 | Wave and qubit demos | `physics/{bloch, dbl, density_evolution, hartree_fock, utils}.py` | numpy, scipy, matplotlib |
 | Shared | `src/core/` (type aliases ported from CEM), `src/config/` (ported from CEM; only `notebooks/physics/shift_operator.ipynb` uses it), `src/quantum_symmetry.py` (Lindblad and commutant helpers for the quantum notebooks), `src/permutations.py` (alias for `src/symmetry/permutations.py`) | |
@@ -81,6 +81,7 @@ Scripts, not importable modules. `crystal_nodes.py` and `proton_slab.py` write t
 | `proton_slab.py` | A slab of protons as a programmable spin Hamiltonian, at toy scale (about a minute) |
 | `ising_pop_physics.py` | Periodic-optimal-prior mismatch analyses for the Curie-Weiss model (`--quick --output-dir DIR`) |
 | `comps_plots.py`, `figures.py`, `lattice_plots.py`, `per_sym.py` | Presentation figures and animations for free particles, bands, lattices and Bloch waves |
+| `clock_information_figures.py` | Clock information and time-averaged mismatch cost for time-homogeneous relaxation: space-time log-ratio, clock-information decay, window scans, clock blur, driven versus reversible ring (`--quick --output-dir DIR --only NAME`, about 15 s quick) |
 
 ## Notebooks
 
