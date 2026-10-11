@@ -11,3 +11,10 @@ data
 notebooks/media
 agca_jax-master
 tmp.md
+
+# Local Python setup
+.venv/
+.tools/
+.cache/
+.pytest_cache/
+.ipynb_checkpoints/

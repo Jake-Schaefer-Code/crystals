@@ -1,5 +1,11 @@
 # Devlog
 
+## 2026-10-10 (fresh Mac setup)
+
+- Added `Makefile`, `requirements.in`, and a resolved `requirements.txt` for a repository-local Python 3.13 environment. `make setup` bootstraps pinned uv, downloads Python if needed, and installs locked runtime, test and notebook dependencies; `make test`, `make example` and `make notebook` use the same environment. Local environments and caches are gitignored. Replaced the old machine-specific environment path in README with setup and activation instructions.
+- Added `requirements-notebooks.txt` and `make notebooks` for optional quantum/geospatial exploratory notebook dependencies. These extras were not installed or validated; external `dolfin`, `PDE` and `geometry` dependencies still require separate setup.
+- Checked on the new Apple Silicon Mac with Python 3.13.16 and JAX 0.10.0: all 345 tests pass (73.92 s); the small Calogero VMC example completes, its exact-state energy agrees with the analytic value, and its antisymmetry check passes. JupyterLab starts successfully, and uv reports all 134 locked packages compatible.
+
 ## 2026-10-08 (tests, docs and the nested agca copy)
 
 - Added `pytest.ini` (`testpaths = tests`, `pythonpath = .`). A bare `pytest` at the root used to recurse into the nested `agca_jax-master` checkout and abort with 74 collection errors, because both projects ship a top-level `src`, so no test ran. `pytest` and `python -m pytest` now collect the 345 tests in `tests/`, and all 345 pass (92 s on an idle machine).

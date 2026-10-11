@@ -4,18 +4,53 @@ Research sandbox for symmetry, geometry and many-body physics. It holds six larg
 
 `AGENTS.md` has conventions and working rules. `DEVLOG.md` records what changed and why, newest first. If a path or command below stops working, fix this file.
 
-## Running things
+## Setup and running things
+
+On a fresh Mac, install Apple's Command Line Tools (`xcode-select --install`), then:
 
 ```bash
-PY=/Users/jakeschaefer/Desktop/Research_Stuff/base_env/bin/python   # Python 3.13, jax 0.10.0
-export MPLBACKEND=Agg                                               # headless figures
-
-$PY -m pytest                          # all 345 tests, about 1.5 minutes (pytest.ini points at tests/)
-$PY -m pytest tests/test_young.py -q   # one file
-$PY examples/calogero_vmc.py           # an example script; run from the repo root
+cd /Users/js5947/Desktop/Research/crystals  # use your clone's location
+make setup
+make test
+make example
+make notebook
 ```
 
-There is no poetry, Hydra or `jaxqmc` setup here. In a sandbox where `~/.matplotlib` or the bytecode cache is read-only, point `MPLCONFIGDIR` and `PYTHONPYCACHEPREFIX` at a temp directory. `python -I` ignores every `PYTHON*` variable, `PYTHONPYCACHEPREFIX` included, so pair it with `-B` or bytecode lands next to the sources.
+`make setup` bootstraps a pinned uv tool into `.tools/`, downloads Python 3.13,
+creates `.venv/`, and installs the exact versions in `requirements.txt`.
+It needs internet on the first run and does not change the system Python.
+JAX uses the CPU on macOS. There is no compiled application to build.
+Run `make help` for the available commands.
+
+For your own scripts, activate the environment from the repository root:
+
+```bash
+source .venv/bin/activate
+python examples/calogero_vmc.py
+python -m pytest tests/test_young.py -q
+```
+
+In VS Code, select `.venv/bin/python` as the Python interpreter and notebook
+kernel. `make notebook` launches JupyterLab using this same environment.
+The test and example targets use headless plotting; interactive notebooks do not.
+
+`requirements.in` lists direct dependencies; `requirements.txt` locks their
+resolved versions. After intentionally changing dependencies, run `make lock`
+and `make setup`, then check `make test` before committing the new lock file.
+`make setup` synchronizes the environment to the lock file, removing extra packages.
+
+Specialized quantum and geospatial notebooks need additional packages:
+run `make notebooks` after setup (or again after a later `make setup`). These
+optional packages are listed in `requirements-notebooks.txt` and are not locked.
+Some exploratory notebooks also reference FEniCS (`dolfin`) or local modules
+(`PDE`, `geometry`) that are not shipped here; those need their original external
+code/environment. Notebook outputs are tracked, so avoid rerunning whole notebooks
+just to check installation.
+
+There is no poetry, Hydra or `jaxqmc` setup here. In a sandbox where
+`~/.matplotlib` or the bytecode cache is read-only, point `MPLCONFIGDIR` and
+`PYTHONPYCACHEPREFIX` at a temp directory. `python -I` ignores every `PYTHON*`
+variable, so pair it with `-B` to prevent bytecode beside the sources.
 
 ## Layout
 

@@ -1,0 +1,12 @@
+# Optional packages used by specialized exploratory notebooks.
+-r requirements.txt
+qiskit
+qiskit-aer
+qiskit-ibm-runtime
+qutip
+geopandas
+geodatasets
+geonamescache
+pyvista
+tyro
+# dolfin (FEniCS) and the local PDE/geometry modules require separate setup.

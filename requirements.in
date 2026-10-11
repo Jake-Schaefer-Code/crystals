@@ -1,0 +1,22 @@
+# Runtime dependencies for src/, physics/, plotting/ and examples/.
+numpy
+scipy
+matplotlib
+jax==0.10.0
+optax
+diffrax
+sympy
+typing_extensions
+# Development and notebook environment.
+pytest
+POT
+jupyterlab
+ipykernel
+ipywidgets
+pandas
+plotly
+imageio
+scikit-learn
+scikit-image
+networkx
+shapely
