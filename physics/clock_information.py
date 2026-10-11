@@ -44,7 +44,7 @@ from jax import Array
 from jax.scipy.fft import dct, idct
 from jax.scipy.linalg import expm
 
-from physics.markov import KL
+from physics.markov import KL, ctmc_trajectory, contraction_rate, stationary_distribution
 
 
 # --------------------------------------------------------------------------- #
@@ -83,27 +83,11 @@ def uniform_window_mmc(P: Array) -> Array:
 # Finite state spaces
 # --------------------------------------------------------------------------- #
 
-def ctmc_trajectory(K: Array, p0: Array, ts: Array) -> Array:
-  r""" ``P[i] = expm(K t_i) @ p0``. """
-  return jax.vmap(lambda t: expm(K * t) @ p0)(jnp.asarray(ts))
-
-
-def contraction_rate(K: Array, p: Array, q: Array) -> Array:
-  r""" ``D_K(p || q) = -d/ds KL(e^{sK} p || e^{sK} q)`` at ``s = 0``; needs ``p, q`` of full support. """
-  Kp, Kq = K @ p, K @ q
-  return -jnp.sum(Kp * (jnp.log(p) - jnp.log(q))) + jnp.sum(p * Kq / q)
-
 
 def clock_information_decay(K: Array, P: Array, w: Array, shifts: Array) -> Array:
   r""" ``I(tau; X_{tau+s})`` for each shift ``s``: the window's clock information after extra evolution. """
   return jax.vmap(lambda s: clock_information(P @ expm(K * s).T, w))(jnp.asarray(shifts))
 
-
-def stationary_distribution(K: Array) -> onp.ndarray:
-  r""" The normalized null vector of ``K`` (eigenvalue nearest zero), clipped to be nonnegative. """
-  vals, vecs = onp.linalg.eig(onp.asarray(K))
-  v = onp.real(vecs[:, onp.argmin(onp.abs(vals))])
-  return onp.clip(v / v.sum(), 0.0, None)
 
 
 def ring_generator(n: int, k_plus: float, k_minus: float) -> Array:

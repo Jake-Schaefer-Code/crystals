@@ -38,17 +38,22 @@ def _crop(xs, x_range):
   return keep, xs[keep]
 
 
-def plot_space_time(result: SpaceTimeWindow, *, x_range=(-3.0, 4.0), clip: float = 3.0) -> Figure:
+def plot_space_time(result: SpaceTimeWindow, *, x_range=(-3.0, 4.0), clip: float = 3.0, weighted: bool=True) -> Figure:
   r""" Space-time density ``p_t(x)`` and the clock-information field ``log(p_t / qbar)``. """
   r = result
   keep, xs = _crop(r.xs, x_range)
   dx = r.xs[1] - r.xs[0]
+
   fig, axes = plt.subplots(1, 2, figsize=(11, 4.2), constrained_layout=True)
   im = axes[0].imshow((r.P[:, keep] / dx).T, origin="lower", extent=[r.ts[0], r.ts[-1], xs[0], xs[-1]],
                       aspect="auto", cmap="Blues")
   axes[0].set(xlabel=r"time $t$", ylabel=r"state $x$", title=r"Space-time density $p_t(x)$")
   fig.colorbar(im, ax=axes[0], label="density")
-  im = _log_ratio_panel(axes[1], r.ts, xs, r.log_ratio[:, keep], clip=clip)
+  if weighted:
+    field = r.P[:, keep] * r.log_ratio[:, keep]
+  else:
+    field = r.log_ratio[:, keep]
+  im = _log_ratio_panel(axes[1], r.ts, xs, field, clip=clip)
   axes[1].set(xlabel=r"time $t$", ylabel=r"state $x$",
               title=fr"$\log(p_t/\bar q)$, $I(\tau;X)={r.info:.3f}$ nats")
   fig.colorbar(im, ax=axes[1], label="pointwise clock information")
@@ -85,7 +90,7 @@ def plot_window_scans(scans: Sequence[tuple[str, WindowScan]], *,
   return fig
 
 
-def plot_blur(result: BlurScan, *, x_range=(-3.0, 4.0), clip: float = 3.0) -> Figure:
+def plot_blur(result: BlurScan, *, x_range=(-3.0, 4.0), clip: float = 3.0, weighted: bool=True) -> Figure:
   r""" Smoothed log-ratio fields at ``display_sigmas`` and the retained fractions against clock blur. """
   r = result
   keep, xs = _crop(r.xs, x_range)

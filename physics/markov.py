@@ -22,6 +22,7 @@ import jax
 from jax import Array, lax
 import jax.numpy as jnp
 from jax.scipy.special import xlogy
+from jax.scipy.linalg import expm
 from functools import partial
 import numpy as onp
 
@@ -47,6 +48,13 @@ def KL2(p, q, axis=None):
   p_ok = p != 0.
   return jnp.sum(jnp.where(p_ok, lax.mul(p, lax.log(p)) - lax.mul(p, lax.log(q)), jnp.zeros_like(p)), axis=axis)
 
+def contraction_rate(K: Array, p: Array, q: Array) -> Array:
+  r""" ``D_K(p || q) = -d/ds KL(e^{sK} p || e^{sK} q)`` at ``s = 0``; needs ``p, q`` of full support. """
+  Kp, Kq = K @ p, K @ q
+  return -jnp.sum(xlogy(Kp, p) - xlogy(Kp, q)) + jnp.sum(p * Kq / q)
+
+
+
 
 def JS(distributions, base=jnp.e):
   P = jnp.asarray(distributions, dtype=jnp.float32)
@@ -65,6 +73,14 @@ def matrix_powers(G: Array, N: int):
     length=N,
   )
   return Gs  # [I, G, G^2, ..., G^(N-1)]
+
+
+
+def ctmc_trajectory(K: Array, p0: Array, ts: Array) -> Array:
+  r""" ``P[i] = expm(K t_i) @ p0``. """
+  return jax.vmap(lambda t: expm(K * t) @ p0)(jnp.asarray(ts))
+
+
 
 # ---- optimal prior
 def get_q_star(p: Array, G: Array, n_steps: int):
@@ -182,6 +198,17 @@ def pmmc2(p0, G, N):
   )
 
 
+def stationary_dist_transition(G: Array) -> onp.ndarray:
+  vals, vecs = onp.linalg.eig(G)
+  pi = onp.real(vecs[:, onp.argmin(onp.abs(vals - 1.0))])
+  return onp.clip(pi / pi.sum(), 0, None)
+
+def stationary_distribution(K: Array) -> onp.ndarray:
+  r""" The normalized null vector of ``K`` (eigenvalue nearest zero), clipped to be nonnegative. """
+  vals, vecs = onp.linalg.eig(onp.asarray(K))
+  pi = onp.real(vecs[:, onp.argmin(onp.abs(vals))])
+  return onp.clip(pi / pi.sum(), 0.0, None)
+
 def periodic_mmc_curves(G, p0, N_max: int):
   r"""Orbit, periodic mismatch cost for ``N = 1..N_max``, stationary state and its distance to ``p0``.
 
@@ -195,9 +222,13 @@ def periodic_mmc_curves(G, p0, N_max: int):
   Gp_avgs = p_avgs @ G.T
   landauer = - H(pts[1:], axis=1) + H(p0)
   pmmcs = - landauer + Ns * (H(p_avgs, axis=1) - H(Gp_avgs, axis=1))
-  vals, vecs = onp.linalg.eig(G)
-  idx = onp.argmin(onp.abs(vals - 1.0))
-  pi = onp.real(vecs[:, idx])
-  pi = onp.clip(pi / pi.sum(), 0, None)
+  pi = stationary_dist_transition(G)
   kl = KL(p0, pi)
   return pts, pmmcs, pi, kl
+
+
+
+
+
+
+
