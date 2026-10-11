@@ -90,17 +90,29 @@ def plot_window_scans(scans: Sequence[tuple[str, WindowScan]], *,
   return fig
 
 
-def plot_blur(result: BlurScan, *, x_range=(-3.0, 4.0), clip: float = 3.0, weighted: bool=True) -> Figure:
-  r""" Smoothed log-ratio fields at ``display_sigmas`` and the retained fractions against clock blur. """
+def plot_blur(result: BlurScan, *, x_range=(-3.0, 4.0), clip: float = 3.0, weighted: bool = False) -> Figure:
+  r""" Smoothed log-ratio fields at ``display_sigmas`` and the retained fractions against clock blur.
+
+  With ``weighted=True`` the panels show the integrand ``p^sigma_t(x) log(p^sigma_t / qbar)`` (a density
+  in ``x``), whose window average is ``I_sigma``, on one symmetric scale shared by all panels;
+  ``clip`` is then ignored.
+  """
   r = result
   keep, xs = _crop(r.xs, x_range)
   n = len(r.display_sigmas)
+  if weighted:
+    fields = r.display_P[:, :, keep] / (r.xs[1] - r.xs[0]) * r.log_ratios[:, :, keep]
+    clip = float(np.max(np.abs(fields)))
+    label = r"$p^\sigma_t\,\log(p^\sigma_t/\bar q)$"
+  else:
+    fields = r.log_ratios[:, :, keep]
+    label = r"$\log(p^\sigma_t/\bar q)$"
   fig, axes = plt.subplots(1, n + 1, figsize=(4.0 * (n + 1), 3.8), constrained_layout=True)
-  for ax, sigma, field in zip(axes[:n], r.display_sigmas, r.log_ratios):
-    im = _log_ratio_panel(ax, r.ts, xs, field[:, keep], clip=clip)
+  for ax, sigma, field in zip(axes[:n], r.display_sigmas, fields):
+    im = _log_ratio_panel(ax, r.ts, xs, field, clip=clip)
     ax.set(xlabel=r"time $t$", title=fr"clock blur $\sigma={sigma:.2f}$")
   axes[0].set_ylabel(r"state $x$")
-  fig.colorbar(im, ax=axes[n - 1], label=r"$\log(p^\sigma_t/\bar q)$")
+  fig.colorbar(im, ax=axes[n - 1], label=label)
   ax = axes[n]
   ax.plot(r.sigmas, r.info / r.info[0], lw=2.0, label=r"clock information $I_\sigma/I_0$")
   ax.plot(r.sigmas, r.mmc / r.mmc[0], "--", lw=2.0, label=r"minimal cost $M_\sigma/M_0$")

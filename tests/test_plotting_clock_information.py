@@ -46,6 +46,7 @@ def test_decay_and_window_figures_draw():
 def test_blur_and_ring_figures_draw():
   blur = ci.ou_blur_scan([0.0, 0.5], T=3.0, n_t=60, xs=XS, display_sigmas=(0.0, 0.5))
   _draw(plot_ci.plot_blur(blur))
+  _draw(plot_ci.plot_blur(blur, weighted=True))
   ring = ci.ring_comparison(6, 1.0, 0.1, t_max=10.0, n_t=51, Ts=(2.0, 6.0))
   fig = plot_ci.plot_ring(ring)
   assert len(fig.axes) == 3

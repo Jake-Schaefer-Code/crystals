@@ -265,8 +265,8 @@ def ctmc_window_scan(K: Array, p0: Array, Ts: Sequence[float], *, n_t: int = 120
 class BlurScan:
   r""" Clock information and time-averaged minimal cost rate after blurring time by ``sigma``.
 
-  ``info[k]`` and ``mmc[k]`` are for ``sigmas[k]``; ``log_ratios[j]`` is the smoothed log-ratio field
-  at ``display_sigmas[j]`` on ``ts`` (midpoints) by ``xs``.
+  ``info[k]`` and ``mmc[k]`` are for ``sigmas[k]``; ``log_ratios[j]`` and ``display_P[j]`` are the
+  smoothed log-ratio field and masses at ``display_sigmas[j]`` on ``ts`` (midpoints) by ``xs``.
   """
   sigmas: onp.ndarray
   info: onp.ndarray
@@ -275,6 +275,7 @@ class BlurScan:
   xs: onp.ndarray
   display_sigmas: onp.ndarray
   log_ratios: onp.ndarray
+  display_P: onp.ndarray
 
 
 def ou_blur_scan(sigmas: Sequence[float], *, T: float = 3.0, n_t: int = 400, xs: Array, a: float = 1.0,
@@ -296,9 +297,10 @@ def ou_blur_scan(sigmas: Sequence[float], *, T: float = 3.0, n_t: int = 400, xs:
     assert float(jnp.max(jnp.abs(Ps.mean(axis=0) - q))) < 1e-8, "the blur moved qbar"
     info.append(float(clock_information(Ps, w)))
     mmc.append(float(jnp.mean(ou_contraction_rate(Ps, q, xs, a=a, v_inf=v_inf))))
-  log_ratios = onp.stack([onp.asarray(log_ratio(jnp.maximum(blurred(s), 1e-300), w)) for s in display_sigmas])
+  display_P = onp.stack([onp.asarray(blurred(s)) for s in display_sigmas])
+  log_ratios = onp.stack([onp.asarray(log_ratio(jnp.maximum(Ps, 1e-300), w)) for Ps in display_P])
   return BlurScan(onp.asarray(sigmas, dtype=float), onp.array(info), onp.array(mmc), onp.asarray(ts),
-                  onp.asarray(xs), onp.asarray(display_sigmas, dtype=float), log_ratios)
+                  onp.asarray(xs), onp.asarray(display_sigmas, dtype=float), log_ratios, display_P)
 
 
 @dataclass(frozen=True)
