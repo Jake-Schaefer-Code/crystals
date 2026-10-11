@@ -96,8 +96,8 @@ def test_jacobi_slice_of_three_fermions_has_six_wedges():
 
 def test_stabilizer_order_matches_group_closure():
   spins = onp.array([0, 0, 0, 0, 1, 1, 1])
-  cyc = lambda a, b, c: nodal._relabel(7, {a: b, b: c, c: a})
-  double = nodal._relabel(7, {0: 1, 1: 0, 4: 5, 5: 4})
+  cyc = lambda a, b, c: perms.from_cycles(((a, b, c),), degree=7, one_based=False)
+  double = perms.from_cycles(((0, 1), (4, 5)), degree=7, one_based=False)
   for certified in ([cyc(0, 1, 2)],
                     [cyc(0, 1, 2), cyc(2, 3, 0)],
                     [cyc(0, 1, 2), cyc(4, 5, 6)],

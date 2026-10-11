@@ -1,196 +1,20 @@
 # AGENTS.md
 
-This file provides guidance to coding agents working in this directory.
+Conventions and working rules for coding agents and maintainers. Layout, commands and known issues are in `README.md`; history is in `DEVLOG.md`. Prefer mathematically faithful abstractions over plotting shortcuts.
 
-This repository implements representation-theoretic crystallography utilities.
-Prefer mathematically faithful abstractions over plotting shortcuts.
+This is a research sandbox: a folder of importable modules plus notebooks and example scripts. Keep changes narrow and compatible with the notebooks that import them.
 
-This is a research sandbox for representation theory, geometry, crystal/orbifold mappings, symmetry  
-operations, lattice visualizations, and Poisson-ratio experiments. It is not an  
-installable Python package right now. Treat it as a folder of importable helper  
-modules plus exploratory notebooks and scripts.
+## Before you edit
 
-## Development Commands
+- Read the module docstring. The newer modules (`physics/markov`, `glauber`, `nodal`, `dfa_memory`, `src/symmetry/group_laws`, ...) state their conventions there: generator orientation, which probability `p` means, protocols. They are not repeated here.
+- Check `DEVLOG.md` for why something is the way it is, and add an entry in its style for notable changes: what moved, and what it was checked against.
+- Do not nest another project's checkout inside this tree. Both this repo and `agca_jax` ship a top-level `src`, so a nested copy made a bare `pytest` abort at collection.
 
-For real import and plotting checks in this sandbox, use the local scientific
-virtual environment:
+## Conventions
 
-```bash
-PY=/Users/jakeschaefer/Desktop/Research_Stuff/base_env/bin/python
-export PYTHONPYCACHEPREFIX=/tmp/crystals_pycache
-export MPLCONFIGDIR=/tmp/crystals_mplconfig
-export MPLBACKEND=Agg
-```
+### Array shapes
 
-Keep generated plot smoke-test artifacts in `/tmp`, not in the project tree.
-
-
-### Syntax Checks
-
-Prefer the local scientific virtual environment for real checks:
-
-```bash
-PY=/Users/jakeschaefer/Desktop/Research_Stuff/base_env/bin/python
-export PYTHONPYCACHEPREFIX=/tmp/crystals_pycache
-export MPLCONFIGDIR=/tmp/crystals_mplconfig
-export MPLBACKEND=Agg
-```
-
-`MPLCONFIGDIR` matters because `~/.matplotlib` may not be writable in this
-sandbox. `PYTHONPYCACHEPREFIX` keeps bytecode caches out of user cache
-directories that may also be outside writable roots.
-
-```bash
-$PY -m py_compile \
-  coordinates.py geo_ops_utils.py crystal_funcs.py TriMap.py categorization.py \
-  plotting_utils.py unit_cell_utils.py figures.py functions6.py legacy/old.py physics/poisson.py unit_cell.py \
-  per_sym.py comps_plots.py lattice_plots.py \
-  geometry/voronoi.py
-```
-
-### Import Smoke Tests
-
-Use the local venv above for import tests. The system `python3` may not have
-`numpy`, `scipy`, or `matplotlib`.
-
-```bash
-$PY - <<'PY'
-import coordinates
-import geo_ops_utils
-import crystal_funcs
-from TriMap import TriMap
-import categorization
-import per_sym
-import comps_plots
-print("core imports ok")
-PY
-```
-
-Do not import every `*.py` file as a validation step. Several scripts execute
-plotting, animation, or FEniCS solves at import time.
-
-### Plot Smoke Tests
-
-For plotting changes, keep generated smoke-test artifacts in `/tmp`:
-Figure constructors in `comps_plots.py` return figures; save them externally
-with `plotting_utils.save_path()` instead of passing `savepath` into the
-constructor.
-
-```bash
-$PY - <<'PY'
-from pathlib import Path
-import shutil
-import matplotlib.pyplot as plt
-import comps_plots
-from plotting_utils import save_path
-
-out = Path("/tmp/crystals_plot_smoke")
-if out.exists():
-    shutil.rmtree(out)
-out.mkdir(parents=True)
-
-paths = []
-fig = comps_plots.plot_free_particle_paraboloid()
-paths.append(save_path(fig, out / "free_particle_paraboloid.png"))
-plt.close(fig)
-fig = comps_plots.make_free_vs_central_potential_figure(ngrid=50)
-paths.append(save_path(fig, out / "free_vs_central.png"))
-plt.close(fig)
-paths.append(comps_plots.make_discrete_laplacian_figure(out))
-paths.append(comps_plots.make_monatomic_dispersion_figure(out, n_sites=8))
-paths.append(comps_plots.make_diatomic_dispersion_figure(out))
-paths.append(comps_plots.make_shift_operator_animation(out, n_frames=3, filename="shift_operator_smoke.gif"))
-paths.append(comps_plots.make_gap_opening_animation(out, n_frames=3, filename="gap_opening_smoke.gif"))
-
-missing = [str(p) for p in paths if not Path(p).exists() or Path(p).stat().st_size == 0]
-if missing:
-    raise SystemExit(f"missing/empty outputs: {missing}")
-print("plot smoke ok")
-PY
-```
-
-### Tests
-
-There is currently no formal test suite, `requirements.txt`, `pyproject.toml`,
-or package metadata. Use focused smoke tests around the function you changed.
-For geometry changes, prefer small deterministic arrays with known areas,
-barycentric coordinates, or affine transforms.
-
-## Project Architecture
-
-### Core Library Modules
-
-- `coordinates.py` - Barycentric/cartesian conversion, stereographic
-projection, and spherical/cartesian coordinate conversion.
-- `geo_ops_utils.py` - Quaternion helpers, rotation matrices, 2D rotation
-matrices, point rotation, and polyhedron rotation.
-- `planar_geometry.py` - Planar polygon helpers: edge sampling, polygon area
-  and centroid, intersection and containment predicates, and triangle-index
-  helpers used by `TriMap` and plotting code.
-- `crystal_funcs.py` - Higher-dimensional geometry, interpolation, affine and
-  polynomial transforms, geodesic helpers, weighted distributions, and
-  piecewise matrix collection. It also re-exports older planar helpers for
-  notebook compatibility.
-- `TriMap.py` - `TriMap` class for mapping polygons to triangular fundamental
-domains and selecting low-energy piecewise affine maps.
-- `categorization.py` - Limited parser for selected space-group-like symmetry
-symbols into `(matrix, translation)` operations.
-- `plotting_utils.py` - Matplotlib helpers for visualizing simplices,
-  distributions, symmetrized functions, and mapping results.
-- `unit_cell_utils.py` - Shared geometry and Matplotlib helpers for unit-cell
-  sketches: equilateral/rhombic vertices, point rotation/reflection, polygon
-  drawing, triangular grid generation, spiral coordinates, and legend cleanup.
-- `per_sym.py` - Periodic symmetry helpers for lattice construction,
-  reciprocal lattices, Bloch waves, shift operators, Brillouin-zone sketches,
-  and simple monatomic/diatomic dispersions.
-- `figures.py` - Mostly import-safe CLI/script for lattice animation and
-  unit-cell figures. Requires `tyro` for command-line usage.
-- `comps_plots.py` - Import-safe presentation figure and animation generators
-  for free-particle, central-potential, shift-operator, and band-structure
-  comparisons.
-
-### Exploratory Or Script-Like Files
-
-- `unit_cell.py` - Import-safe triangular unit-cell animation script. Running
-  `main()` creates a `FuncAnimation`, writes `spiral_animation2.gif`, and calls
-  `plt.show()`.
-- `functions6.py` - Import-safe legacy triangular unit-cell sketch. Running
-  `main()` creates and shows a single Matplotlib figure.
-- `physics/poisson.py` - Not import-safe. Imports `dolfin`, solves a FEniCS linear
-elasticity problem, forces the `MacOSX` backend, prints results, and calls
-`plt.show()`.
-- `legacy/old.py` - Legacy plotting/mapping helper file. It imports broadly and
-duplicates routines that now exist in current modules. Keep it for reference
-only; do not add new code there.
-- `*.ipynb` - Research notebooks. Avoid rewriting large outputs unless the user
-explicitly asks for notebook cleanup.
-- `geometry/` - Separate exploratory geometry area. `geometry/flows.md` is
-explanatory text. `geometry/voronoi.py` is currently empty apart from
-whitespace.
-
-## Dependencies
-
-Common dependencies:
-
-- `numpy`
-- `scipy`
-- `matplotlib`
-
-Optional or context-specific dependencies:
-
-- `scikit-learn` for smoother Gaussian-mixture sampling in
-  `plotting_utils.plot_symmetry_op` and for importing `legacy/old.py`
-- `tyro` for `figures.py`
-- `dolfin`/FEniCS for `physics/poisson.py` and parts of `poisson_ratio.ipynb`
-- `ffmpeg` for `unit_cell.py` GIF generation
-- `sympy` in `root_plots.ipynb`
-
-## Important Conventions
-
-### Array Shape Conventions
-
-Most code assumes NumPy arrays where points are rows and coordinate components
-are in the final axis:
+Points are rows and coordinate components are on the last axis:
 
 ```python
 points_2d.shape == (n_points, 2)
@@ -199,169 +23,74 @@ triangle.shape == (3, 2)
 tetrahedron.shape == (4, 3)
 ```
 
-Batch dimensions usually come before the simplex/point axes. Check existing
-call sites before changing broadcasting behavior.
+Batch dimensions usually come before the simplex and point axes. Check existing call sites before changing broadcasting behavior.
 
-### Polygon Ordering
+### Polygon ordering
 
-2D polygon routines generally assume vertices are ordered counterclockwise.
-This affects:
+2D polygon routines assume vertices are ordered counterclockwise; `planar_geometry.area` returns a signed area. This affects area, triangulation and inclusion checks, edge interpolation, self-intersection tests and mapping quality. If a result looks sign-flipped or self-intersecting, check vertex order before rewriting the math.
 
-- `area`
-- triangulation and inclusion checks
-- interpolation along polygon edges
-- self-intersection tests
-- mapping quality calculations
+### Barycentric coordinates
 
-If a result looks sign-flipped or self-intersecting, check vertex order before
-rewriting the math.
+`src/coordinates.py` is the home for coordinate conversion: `barycentric_coordinates2D`, `barycentric_to_cartesian_2D`, `cart_to_bary_tetra`, `bary_to_cart`, `barycentric_weights` and `calculate_barycentric_coordinates` (least squares; prints the residual when it is nonzero). `legacy/old.py` (local, gitignored) has older duplicates; do not copy them unless the task is reproducing legacy behavior.
 
-### Barycentric Coordinates
+### Rotations and symmetry operations
 
-`coordinates.py` is the preferred home for coordinate conversion logic.
-`legacy/old.py` contains older duplicate barycentric functions; do not copy
-those into new code unless the task is explicitly about reproducing legacy
-behavior.
+Quaternions are `[w, x, y, z]`. Rotation helpers live in `src/geo_ops_utils.py` (`rotation_quaternions`, `make_q_rot_mats`, `q_rot_mat`, `rotate`, `quaternion_multiply`, `generate_rotation_matrices`, `generate_rot_mats2d`, `rotate_polyhedron`, `rot_mat`, ...).
 
-Use:
+A symmetry operation is an `AffineOperation` (`x -> matrix @ x + translation`) or a `SeitzOp` (`R`, `tau`), both in `src/symmetry/symmetry.py`; `src/symmetry/operations.py` builds the common ones. `src/categorization.py` parses only a small subset of space-group notation: extend it incrementally and document examples when adding symbols.
 
-- `barycentric_coordinates2D`
-- `barycentric_to_cartesian_2D`
-- `cart_to_bary3D`
-- `bary_to_cart`
-- `calculate_barycentric_coordinates`
+### Wavefunctions
 
-`calculate_barycentric_coordinates` solves by least squares and prints residuals
-if present.
+Antisymmetric wavefunctions follow the `physics.nodal` protocol `psi(R) -> (sign, log|psi|)`. Nodal and VMC work needs float64. Library modules never set `jax_enable_x64`; scripts and tests do, and `physics.ansatz1d` reads the flag, so do not flip it from library code.
 
-### Rotations And Symmetry Operations
+### Plotting
 
-Quaternion vectors are represented as `[w, x, y, z]`.
+Figure code lives in `plotting/` (and in `plotting_utils.py` for the geometry helpers); numerics live in `physics/`. A figure function takes a result and returns a `Figure`; saving is the caller's job (`plotting_utils.save_path`). Do not add plotting side effects at import time: anything that shows or writes a figure goes behind `if __name__ == "__main__":`. A few older helpers still call `plt.show()` inside functions (`physics/bloch.py`, `physics/density_evolution.py`).
 
-Primary rotation helpers live in `geo_ops_utils.py`:
+## Error-prone areas
 
-- `rotation_quaternions`
-- `make_q_rot_mats`
-- `q_rot_mat`
-- `rotate`
-- `generate_rotation_matrices`
-- `rotate_polyhedron`
-- `rot_mat`
+### Import safety
 
-Symmetry operations are generally represented as `(matrix, translation)` pairs.
-The parser in `categorization.py` supports only a small subset of notation.
-Extend it incrementally and document examples when adding new symbols.
+Everything under `src/`, `plotting/` and `physics/` imports cleanly except `physics/dbl.py` (runs a simulation at import), `physics/bloch.py` (opens a figure) and `physics/hartree_fock.py` (prints). `TriMap.py`, `plotting_utils.py` and `unit_cell_utils.py` are safe too. Scripts in `examples/` are not modules; do not import them (`lattice_plots.py` has no `__main__` guard). Do not import every `*.py` file as a validation step.
 
-### Mapping Workflow
+The numpy-only layers must stay free of a module-level `import jax`: `src/symmetry/`, `src/exact_gb.py`, `src/exact_poly.py`, `src/core/` (its type aliases use `TYPE_CHECKING`), `src/config/` and the geometry modules. That is why `import src.exact_poly` takes a few hundredths of a second and why notebooks that only need numpy start fast.
 
-Typical `TriMap` usage:
+### Compatibility re-exports
 
-```python
-from TriMap import TriMap
+`src/crystal_funcs.py` still re-exports planar helpers from `src/planar_geometry.py` for notebook compatibility, and `src/permutations.py` aliases `src/symmetry/permutations.py` for the `rep` and `quantum` notebooks and `src/quantum_symmetry.py`. When reorganizing, move the implementation into the focused module and leave a thin alias. Check `notebooks/` before breaking an import path.
 
-mapper = TriMap(polygon)
-mapper.define_distribution()
-maps, matrices, triangulations, rotated_polygons = mapper.create_mapping()
-idx = mapper.minimize_jacobian()
-```
+### In-place normalization and printed diagnostics
 
-Important behavior:
+`coordinates.geodesic` and `coordinates.dist_to_geodesic` normalize their arguments in place; pass copies. `calculate_barycentric_coordinates` and `geodesic` print a diagnostic (residual, zero denominator) instead of raising. Keep any stronger error handling local to the change you were asked for.
 
-- `TriMap` recenters both the polygon and triangle around their centroids.
-- `create_mapping()` rotates through 12 polygon orientations.
-- Candidate maps are built by assigning unique polygon vertex triples to
-triangle vertices, then interpolating the remaining polygon vertices.
-- Delaunay triangulations are created on destination points.
-- `minimize_jacobian()` chooses the lowest Dirichlet-style energy candidate.
+### Wildcard imports
 
-### Plotting Workflow
+`src/symmetry/__init__.py` and `src/core/__init__.py` star-import their submodules, and `src/permutations.py` star-imports its target. In new code, import names explicitly.
 
-Use plotting helpers from notebooks or explicit scripts. Many plotting helpers
-call `plt.show()`.
+### Bytecode
 
-Do not add top-level plotting side effects to import-safe modules. If a script
-needs to show a plot or write a file, put it behind:
+`__pycache__` and `*.pyc` are gitignored and untracked. Do not `git add -f` them. `python -I` ignores `PYTHONPYCACHEPREFIX`, so use `python -B` when you import repo modules that way.
 
-```python
-if __name__ == "__main__":
-    ...
-```
+## Testing
 
-## Error-Prone Areas
+`pytest` collects only `tests/` (`pytest.ini`), one file per module. When you change a math-heavy helper, add a small deterministic check with a known answer. Prefer identities that two independent routes must agree on, as the Molien checks do (`tests/test_young.py` against `src/invariants.py`), and keep a plotting smoke test beside any new figure module. Keep generated figures and animations out of version control.
 
-### Import Safety Is Critical
-
-Safe to import:
-
-- `coordinates.py`
-- `geo_ops_utils.py`
-- `crystal_funcs.py`
-- `TriMap.py`
-- `categorization.py`
-- `plotting_utils.py`
-- `unit_cell_utils.py`
-- `figures.py`
-- `per_sym.py`
-- `comps_plots.py`
-- `unit_cell.py`
-- `functions6.py`
-
-Avoid casual imports:
-
-- `physics/poisson.py`
-- `legacy/old.py`
-
-### Compatibility Re-Exports
-
-`crystal_funcs.py` still re-exports several planar helpers from
-`planar_geometry.py` for notebook compatibility. If you are reorganizing more
-geometry code, prefer moving the real implementation into the focused module
-and keeping `crystal_funcs.py` as a thin import layer.
-
-### In-Place Normalization
-
-Some spherical helpers normalize inputs in place, including parts of
-`geodesic`, `dist_to_geodesic`, and related routines. Pass copies if input
-preservation matters.
-
-### Diagnostics Instead Of Exceptions
-
-Some routines print diagnostics rather than raising structured exceptions, for
-example barycentric residuals, singular matrices, or zero geodesic denominators.
-If you need stronger error handling, keep it local to the requested change.
-
-### Broad Imports
-
-Some legacy files use wildcard imports. In new code, prefer explicit imports:
-
-```python
-import crystal_funcs as cfuncs
-import coordinates as cconv
-```
-
-## Development Principles
+## Development principles
 
 1. Keep changes narrow and compatible with notebook workflows.
-2. Prefer improving the import-safe modules over extending legacy scripts.
-3. Do not rewrite notebooks, generated GIFs, or cached files unless asked.
-4. Add small reproducible examples or smoke checks when changing math-heavy
-  helpers.
-5. Preserve current array conventions unless the user explicitly asks for a
-  larger API cleanup.
-6. Be cautious with broad refactors. This directory mixes polished utilities,
-  active experiments, and archived code.
+2. Improve the import-safe modules rather than extending scripts.
+3. Do not rewrite notebooks (their outputs are tracked), generated GIFs or cached files unless asked.
+4. Add small reproducible checks when changing math-heavy helpers.
+5. Preserve current array conventions unless asked for a larger API cleanup.
+6. Be cautious with broad refactors: this directory mixes polished utilities, active experiments and archived code.
 
-
-
-
-
-
+## Behavioral guidelines
 
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
 
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
 
-## 1. Think Before Coding
+### 1. Think Before Coding
 
 **Don't assume. Don't hide confusion. Surface tradeoffs.**
 
@@ -371,7 +100,7 @@ Before implementing:
 - If a simpler approach exists, say so. Push back when warranted.
 - If something is unclear, stop. Name what's confusing. Ask.
 
-## 2. Simplicity First
+### 2. Simplicity First
 
 **Minimum code that solves the problem. Nothing speculative.**
 
@@ -383,7 +112,7 @@ Before implementing:
 
 Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
 
-## 3. Surgical Changes
+### 3. Surgical Changes
 
 **Touch only what you must. Clean up only your own mess.**
 
@@ -399,7 +128,7 @@ When your changes create orphans:
 
 The test: Every changed line should trace directly to the user's request.
 
-## 4. Goal-Driven Execution
+### 4. Goal-Driven Execution
 
 **Define success criteria. Loop until verified.**
 

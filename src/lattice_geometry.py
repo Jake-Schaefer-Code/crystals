@@ -1,5 +1,6 @@
 # lattice_geometry.py
 from __future__ import annotations
+import dataclasses as dcls
 from enum import Enum, auto
 import numpy as onp
 from numpy import sin, cos, sqrt
@@ -18,6 +19,12 @@ class Bravais2D(Enum):
   HEXAGONAL = auto()
   HONEYCOMB = auto()
 
+
+@dcls.dataclass
+class Schlaffi:
+  p: int
+  q: int
+  r: int|None = None
 
 
 def basis_matrix(*vectors: NDArray) -> NDArray:
