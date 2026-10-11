@@ -126,6 +126,29 @@ def test_near_equilibrium_ou_cost_follows_the_mode_filter():
   assert onp.allclose(scan.mmc / scan.budget, 2.0 * onp.asarray(ci.mode_filter_uniform(Ts)), rtol=1e-2)
 
 
+def test_autodiff_time_score_matches_the_closed_form():
+  t, x = 0.4, 1.3
+  m, v = 2.0 * onp.exp(-t), 1.0 - 0.75 * onp.exp(-2 * t)
+  m_dot, v_dot = -m, 1.5 * onp.exp(-2 * t)
+  closed = (x - m) * m_dot / v + (x - m) ** 2 * v_dot / (2 * v ** 2) - v_dot / (2 * v)
+  auto = jax.grad(ci.ou_log_density, argnums=0)(t, x, a=1.0, m0=2.0, v0=0.25)
+  assert float(auto) == pytest.approx(closed, rel=1e-12)
+
+
+def test_autodiff_rates_agree_with_the_grid_versions_away_from_the_time_edges():
+  ou = dict(a=1.0, m0=2.0, v0=0.25)
+  ts, xs = jnp.linspace(0.0, 3.0, 301), jnp.linspace(-7.0, 7.0, 701)
+  w = ci.uniform_weights(len(ts))
+  P = ci.ou_trajectory(ts, xs, **ou)
+  J_grid, J_exact = ci.time_fisher_information(P, ts), ci.ou_time_fisher_exact(ts, xs, **ou)
+  rel = onp.abs(onp.asarray(J_grid - J_exact)) / onp.asarray(J_exact)
+  assert rel[1:-1].max() < 1e-3 and rel[0] > 1e-2                     # jnp.gradient is first order at the ends
+  D_grid = ci.ou_contraction_rate(P, ci.time_average(P, w), xs, a=1.0)
+  D_exact = ci.ou_contraction_rate_exact(ts, xs, w, **ou)
+  assert onp.allclose(D_grid, D_exact, rtol=1e-3)
+  assert float(jnp.sum(w * D_exact)) == pytest.approx(float(ci.uniform_window_mmc(P)) / 3.0, rel=1e-3)
+
+
 # --------------------------------------------------------------------------- #
 # Clock blur
 # --------------------------------------------------------------------------- #

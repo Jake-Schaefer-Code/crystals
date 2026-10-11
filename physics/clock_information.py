@@ -20,7 +20,10 @@ Windows and clock information:
 Dynamics: ``ctmc_trajectory``, ``contraction_rate`` (``D_K(p || q)`` for a CTMC),
 ``clock_information_decay`` (``I(tau; X_{tau+s})``, whose slope at ``s = 0`` is minus the minimal
 cost rate), ``ring_generator`` and ``coherence_bound``, and the Ornstein-Uhlenbeck pair
-``ou_trajectory`` / ``ou_contraction_rate`` (relative Fisher information).
+``ou_trajectory`` / ``ou_contraction_rate`` (relative Fisher information). The grid versions
+differentiate sampled arrays by central differences; ``ou_log_density``, ``ou_time_fisher_exact`` and
+``ou_contraction_rate_exact`` take the derivatives of the closed-form OU density by autodiff instead,
+which removes the first-order error ``jnp.gradient`` makes at the ends of the time grid.
 
 Spectral and smoothing helpers: ``mode_filter_uniform`` (``g``) and ``mode_filter_exponential``
 (``h``) give each relaxation mode's share of ``D(p_0 || pi)`` near equilibrium; ``heat_smooth`` is
@@ -36,6 +39,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from functools import partial
 
 import jax
 import jax.numpy as jnp
@@ -43,7 +47,7 @@ import numpy as onp
 from jax import Array
 from jax.scipy.fft import dct, idct
 from jax.scipy.linalg import expm
-
+from jax.scipy.special import logsumexp
 from physics.markov import KL, ctmc_trajectory, contraction_rate, stationary_distribution
 
 
@@ -128,6 +132,45 @@ def ou_contraction_rate(P: Array, q: Array, xs: Array, *, a: float, v_inf: float
   P_safe = jnp.maximum(P, floor)
   grad = jnp.gradient(jnp.log(P_safe) - jnp.log(jnp.maximum(q, floor)), dx, axis=-1)
   return a * v_inf * jnp.sum(jnp.where(P > floor, P * grad ** 2, 0.0), axis=-1)
+
+
+def ou_log_density(t, x, *, a: float, m0: float, v0: float, v_inf: float = 1.0):
+  r""" Closed-form log-density of the OU solution at scalar time ``t`` and point ``x``. """
+  m = m0 * jnp.exp(-a * t)
+  v = v_inf + (v0 - v_inf) * jnp.exp(-2 * a * t)
+  return -0.5 * (x - m) ** 2 / v - 0.5 * jnp.log(2 * jnp.pi * v)
+
+
+def ou_time_fisher_exact(ts: Array, xs: Array, *, a: float, m0: float, v0: float, v_inf: float = 1.0) -> Array:
+  r""" ``J(t) = sum_x p_t(x) (d_t log p_t(x))^2``: time derivative by autodiff, sum over grid masses. """
+  logp = partial(ou_log_density, a=a, m0=m0, v0=v0, v_inf=v_inf)
+  dlogp_dt = jax.vmap(jax.grad(logp, argnums=0), (None, 0))
+
+  def J(t):
+    lp = jax.vmap(lambda x: logp(t, x))(xs)
+    p = jnp.exp(lp - logsumexp(lp))                          # masses on the grid
+    return jnp.sum(p * dlogp_dt(t, xs) ** 2)
+
+  return jax.vmap(J)(jnp.asarray(ts))
+
+
+def ou_contraction_rate_exact(ts: Array, xs: Array, w: Array, *, a: float, m0: float, v0: float,
+                              v_inf: float = 1.0) -> Array:
+  r""" ``D_K(p_t || qbar)`` for each ``t`` in ``ts``, ``qbar = sum_i w_i p_{t_i}``, scores by autodiff.
+
+  ``log qbar`` is the ``logsumexp`` of the window mixture with the same weights as ``time_average``,
+  so it agrees with the grid version and stays finite in the tails.
+  """
+  logp = partial(ou_log_density, a=a, m0=m0, v0=v0, v_inf=v_inf)
+  log_q = lambda x: logsumexp(jax.vmap(lambda s: logp(s, x))(ts), b=w)
+
+  def rate(t):
+    lp = jax.vmap(lambda x: logp(t, x))(xs)
+    p = jnp.exp(lp - logsumexp(lp))
+    score = jax.vmap(jax.grad(lambda x: logp(t, x) - log_q(x)))(xs)
+    return a * v_inf * jnp.sum(p * score ** 2)
+
+  return jax.vmap(rate)(jnp.asarray(ts))
 
 
 # --------------------------------------------------------------------------- #
