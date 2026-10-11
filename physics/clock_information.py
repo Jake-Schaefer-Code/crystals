@@ -19,7 +19,7 @@ Windows and clock information:
 
 Dynamics: ``ctmc_trajectory``, ``contraction_rate`` (``D_K(p || q)`` for a CTMC),
 ``clock_information_decay`` (``I(tau; X_{tau+s})``, whose slope at ``s = 0`` is minus the minimal
-cost rate), ``ring_generator`` and ``coherence_bound``, and the Ornstein-Uhlenbeck pair
+cost rate), ``ring_generator`` (with ``potential_ring_generator``) and ``coherence_bound``, and the Ornstein-Uhlenbeck pair
 ``ou_trajectory`` / ``ou_contraction_rate`` (relative Fisher information). The grid versions
 differentiate sampled arrays by central differences; ``ou_log_density``, ``ou_time_fisher_exact`` and
 ``ou_contraction_rate_exact`` take the derivatives of the closed-form OU density by autodiff instead,
@@ -28,12 +28,22 @@ which removes the first-order error ``jnp.gradient`` makes at the ends of the ti
 Spectral and smoothing helpers: ``mode_filter_uniform`` (``g``) and ``mode_filter_exponential``
 (``h``) give each relaxation mode's share of ``D(p_0 || pi)`` near equilibrium; ``heat_smooth`` is
 Gaussian smoothing in time (the heat equation in ``t`` with reflecting ends, scale
-``s = sigma^2 / 2``), which leaves ``qbar`` unchanged; ``time_fisher_information`` is ``J(t)``.
+``s = sigma^2 / 2``), which leaves ``qbar`` unchanged; ``time_fisher_information`` is ``J(t)``;
+``time_harmonic`` is the amplitude ``a_k(x)`` of each cosine mode in time, which blurring damps by
+``exp(-(k pi / T)^2 s)``, and ``nodal_cross`` uses ``a_1`` and ``a_2`` to predict the heavy-blur nodal
+set of ``p^sigma_t = qbar``: the lines ``t = T/2`` and ``x = x*`` (``a_1(x*) = 0``) opened into hyperbolas.
 
-Five analyses return dataclasses that ``plotting.clock_information`` draws (this module does not
+The dynamical Hamiltonian ``H_dyn = D^dagger D``, ``D = d_t - K``, is the operator of the least-squares
+form ``int_0^T ||d_t p - K p||^2 dt`` in the ``1/pi`` inner product (``dynamical_hamiltonian``). Its zero
+level is the set of solutions of the master equation, one per initial condition. For a reversible ``K``,
+``H_dyn = -d_t^2 + K^2`` separates and its other levels are ``(k pi / T)^2 + lambda_j^2`` (``normal_levels``);
+a driven ``K`` couples ``t`` and ``x`` through ``(K - K^dagger) d_t``. ``crossing_gap`` measures whether
+the nodal lines of an eigenfunction cross or have reconnected.
+
+Six analyses return dataclasses that ``plotting.clock_information`` draws (this module does not
 import it): ``ou_space_time``, ``ou_clock_decay``, ``ou_window_scan`` / ``ctmc_window_scan``,
-``ou_blur_scan`` and ``ring_comparison``. Each checks the identity it relies on and raises
-``AssertionError`` rather than return a number that violates it.
+``ou_blur_scan``, ``ring_comparison`` and ``ring_hamiltonian``. Each checks the identity it relies on and
+raises ``AssertionError`` rather than return a number that violates it.
 """
 from __future__ import annotations
 
@@ -48,6 +58,7 @@ from jax import Array
 from jax.scipy.fft import dct, idct
 from jax.scipy.linalg import expm
 from jax.scipy.special import logsumexp
+from scipy.signal import resample
 from physics.markov import KL, ctmc_trajectory, contraction_rate, stationary_distribution
 
 
@@ -105,6 +116,16 @@ def coherence_bound(n: int, k_plus: float, k_minus: float) -> float:
   r""" ``cot(pi/n) tanh(A/(2n))`` with affinity ``A = n log(k_plus/k_minus)``; exact for the uniform ring. """
   affinity = n * onp.log(k_plus / k_minus)
   return float(onp.tanh(affinity / (2 * n)) / onp.tan(onp.pi / n))
+
+
+def potential_ring_generator(n: int, k_plus: float, k_minus: float, depth: float) -> Array:
+  r""" Ring generator with rates out of ``x`` scaled by ``exp(-(V(x +- 1) - V(x)) / 2)``, ``V = depth cos(2 pi x / n)``.
+
+  Local detailed balance holds with Boltzmann factor ``e^{-V}``: ``k_plus = k_minus`` is reversible with ``pi ~ e^{-V}``
+  and ``k_plus != k_minus`` drives a current. ``depth = 0`` is ``ring_generator``.
+  """
+  V = depth * jnp.cos(2 * jnp.pi * jnp.arange(n) / n)
+  return ring_generator(n, k_plus * jnp.exp(-0.5 * (jnp.roll(V, -1) - V)), k_minus * jnp.exp(-0.5 * (jnp.roll(V, 1) - V)))
 
 
 # --------------------------------------------------------------------------- #
@@ -213,6 +234,134 @@ def time_fisher_information(P: Array, ts: Array, *, floor: float = 1e-12) -> Arr
   return jnp.sum(jnp.where(P > floor, dP ** 2 / jnp.maximum(P, floor), 0.0), axis=1)
 
 
+def time_harmonic(P: Array, k: int) -> Array:
+  r""" ``a_k(x) = (2/n) sum_i P[i, x] cos(k pi (i + 1/2) / n)``: amplitude of the ``k``-th cosine mode in time.
+
+  For ``P`` on ``midpoint_times(T, n)``, ``P = qbar + sum_{k>=1} a_k(x) cos(k pi t / T)`` exactly, and
+  ``heat_smooth(P, s, T)`` multiplies ``a_k`` by ``exp(-(k pi / T)^2 s)``.
+  """
+  n = P.shape[0]
+  return (2.0 / n) * jnp.cos(k * jnp.pi * (jnp.arange(n) + 0.5) / n) @ P
+
+
+@dataclass(frozen=True)
+class NodalCross:
+  r""" Heavy-blur limit of the nodal set ``p^sigma_t(x) = qbar(x)``, see ``nodal_cross``.
+
+  ``a1`` and ``a2`` are ``time_harmonic(P, 1)`` and ``time_harmonic(P, 2)`` on ``xs``; ``x_star`` holds the
+  zeros of ``a1`` and ``c`` the hyperbola constant ``-a_2(x*) T / (pi a_1'(x*))`` at each of them.
+  """
+  T: float
+  xs: onp.ndarray
+  a1: onp.ndarray
+  a2: onp.ndarray
+  x_star: onp.ndarray
+  c: onp.ndarray
+
+  def product(self, sigma: float) -> onp.ndarray:
+    r""" ``c exp(-3 pi^2 sigma^2 / (2 T^2))``: ``(t - T/2)(x - x*)`` on the nodal set near each crossing. """
+    return self.c * onp.exp(-1.5 * (onp.pi * sigma / self.T) ** 2)
+
+
+def nodal_cross(P: Array, xs: Array, T: float) -> NodalCross:
+  r""" Where the nodal set of the clock-blurred field goes as ``sigma`` grows; ``P`` is on ``midpoint_times(T, n)``.
+
+  Blurring by ``sigma`` damps harmonic ``k`` of ``p_t(x) - qbar(x)`` by ``exp(-(k pi / T)^2 sigma^2 / 2)``, so
+  the slowest wins: ``p^sigma_t(x) - qbar(x) ~ a_1(x) cos(pi t / T)``, a function of ``t`` times a function
+  of ``x``. Its zero set is the line ``t = T/2`` (the window's reflection symmetry) crossed with the lines
+  ``x = x*``, ``a_1(x*) = 0``. Keeping ``k = 2`` and expanding about ``(T/2, x*)`` opens each crossing into
+  the hyperbola ``(t - T/2)(x - x*) = c exp(-3 pi^2 sigma^2 / (2 T^2))``, ``c = -a_2(x*) T / (pi a_1'(x*))``;
+  the sign of ``c`` picks which pair of opposite quadrants the branches occupy. The prediction is asymptotic
+  in ``sigma``, accurate once the ``k >= 3`` harmonics are negligible against ``k = 2``.
+  """
+  xs = onp.asarray(xs)
+  a1, a2 = onp.asarray(time_harmonic(P, 1)), onp.asarray(time_harmonic(P, 2))
+  sign = onp.sign(a1)
+  j = onp.flatnonzero(sign[:-1] * sign[1:] < 0)
+  x_star = xs[j] - a1[j] * (xs[j + 1] - xs[j]) / (a1[j + 1] - a1[j])
+  slope = onp.interp(x_star, xs, onp.gradient(a1, xs, edge_order=2))
+  c = -onp.interp(x_star, xs, a2) * T / (onp.pi * slope)
+  return NodalCross(float(T), xs, a1, a2, x_star, c)
+
+
+# --------------------------------------------------------------------------- #
+# The dynamical Hamiltonian
+# --------------------------------------------------------------------------- #
+
+def dynamical_hamiltonian(K: Array, T: float, n_t: int, pi: Array | None = None) -> tuple[Array, Array]:
+  r""" Matrix of ``H_dyn = D^dagger D``, ``D = d_t - K``, on ``n_t`` times in ``[0, T]``, and the scale of its fields.
+
+  ``H_dyn`` is the operator of the quadratic form ``Q[p] = int_0^T ||d_t p - K p||^2 dt`` with
+  ``||u||^2 = sum_x u_x^2 / pi_x``, the inner product in which a reversible ``K`` is self-adjoint (``pi``
+  defaults to the stationary state). The ends are free, so the natural boundary condition is ``d_t p = K p``
+  at ``t = 0`` and ``T``: the zero-energy states are exactly the solutions of the master equation, one per
+  initial condition, and the zero level is ``n``-fold degenerate. Each time interval contributes its midpoint
+  residual ``(p_{i+1} - p_i) / h - K (p_i + p_{i+1}) / 2`` and the norm has trapezoid weights ``w_i``, so
+  levels carry an ``O(h^2)`` error. Returns ``(H, scale)``: ``H`` is symmetric and positive semidefinite, its
+  eigenvalues are the energies, and an eigenvector ``phi`` is the field ``p = phi.reshape(n_t, n) * scale``.
+  Needs float64 for a sharp zero level.
+  """
+  K = jnp.asarray(K)
+  n = K.shape[0]
+  pi = jnp.asarray(stationary_distribution(K) if pi is None else pi)
+  Kq = K * jnp.sqrt(pi)[None, :] / jnp.sqrt(pi)[:, None]                  # K on q = p / sqrt(pi), Euclidean norm
+  h = T / (n_t - 1)
+  forward = jnp.eye(n_t - 1, n_t, 1)
+  d_t = (forward - jnp.eye(n_t - 1, n_t)) / h
+  mid = (forward + jnp.eye(n_t - 1, n_t)) / 2
+  B = jnp.kron(d_t, jnp.eye(n)) - jnp.kron(mid, Kq)
+  w = jnp.full(n_t, h).at[0].set(0.5 * h).at[-1].set(0.5 * h)
+  s = jnp.kron(jnp.sqrt(w), jnp.ones(n))
+  return h * B.T @ B / s[:, None] / s[None, :], jnp.sqrt(pi)[None, :] / jnp.sqrt(w)[:, None]
+
+
+def normal_levels(K: Array, T: float, n_levels: int) -> onp.ndarray:
+  r""" Lowest ``n_levels`` of ``H_dyn`` if ``K`` is normal in the ``1/pi`` inner product (reversible, or a uniform ring).
+
+  Each eigenvalue ``mu_j`` of ``K`` gives the zero mode ``e^{mu_j t}`` and the tower ``(k pi / T)^2 + (Re mu_j)^2``,
+  ``k >= 1``. With free ends the time profile of a tower state is ``cos(k pi t / T + delta)``,
+  ``tan(delta) = -Re(mu_j) T / (k pi)``, so the ``k = 0`` level of the Neumann problem (``(Re mu_j)^2``) is
+  replaced by the zero mode. ``Im mu_j`` is a gauge phase ``e^{i Im(mu_j) t}`` and moves no level. For a
+  non-normal ``K`` the formula fails.
+  """
+  mu = onp.linalg.eigvals(onp.asarray(K))
+  towers = [(onp.pi * k / T) ** 2 + mu.real ** 2 for k in range(1, n_levels + 1)]
+  return onp.sort(onp.concatenate([onp.zeros(len(mu)), *towers]))[:n_levels]
+
+
+def ring_interpolate(F: onp.ndarray, up: int = 12) -> onp.ndarray:
+  r""" Trigonometric interpolation of ``F[t, x]`` along its periodic site axis onto ``up`` times as many points. """
+  return resample(F, F.shape[1] * up, axis=1)
+
+
+def crossing_gap(F: onp.ndarray, ts: onp.ndarray, up: int = 12) -> float:
+  r""" Smallest ``|F|`` at a saddle of ``F(t, x)`` in units of ``max |F|``: zero if nodal lines cross, positive if avoided.
+
+  Level sets of a smooth function cross only at a saddle whose value is exactly zero; where the lines have
+  reconnected into two hyperbola branches the saddle sits at ``+-epsilon``. ``F`` has periodic ``x`` and is
+  interpolated by ``ring_interpolate``. Saddles are the grid points where ``|grad F|`` is locally smallest
+  with ``det Hess F < 0``, moved to the critical point by one Newton step (``nan`` if there is none).
+  """
+  G = ring_interpolate(F, up)
+  dt, dx = ts[1] - ts[0], 1.0 / up
+  Ft = onp.gradient(G, dt, axis=0)
+  Fx = (onp.roll(G, -1, 1) - onp.roll(G, 1, 1)) / (2 * dx)
+  Ftt = onp.gradient(Ft, dt, axis=0)
+  Fxx = (onp.roll(G, -1, 1) - 2 * G + onp.roll(G, 1, 1)) / dx ** 2
+  Ftx = (onp.roll(Ft, -1, 1) - onp.roll(Ft, 1, 1)) / (2 * dx)
+  g2 = Ft ** 2 + Fx ** 2
+  near = [onp.roll(onp.roll(g2, i, 0), j, 1) for i in (-1, 0, 1) for j in (-1, 0, 1) if (i, j) != (0, 0)]
+  saddle = onp.all([g2 < other for other in near], axis=0) & (Ftt * Fxx - Ftx ** 2 < 0)
+  saddle[[0, -1], :] = False
+  values = []
+  for i, j in zip(*onp.nonzero(saddle)):
+    grad, hess = onp.array([Ft[i, j], Fx[i, j]]), onp.array([[Ftt[i, j], Ftx[i, j]], [Ftx[i, j], Fxx[i, j]]])
+    step = onp.linalg.solve(hess, grad)
+    if abs(step[0]) <= dt and abs(step[1]) <= dx:
+      values.append(abs(G[i, j] - 0.5 * grad @ step))
+  return float(min(values) / onp.abs(G).max()) if values else float("nan")
+
+
 # --------------------------------------------------------------------------- #
 # Analyses
 # --------------------------------------------------------------------------- #
@@ -309,7 +458,8 @@ class BlurScan:
   r""" Clock information and time-averaged minimal cost rate after blurring time by ``sigma``.
 
   ``info[k]`` and ``mmc[k]`` are for ``sigmas[k]``; ``log_ratios[j]`` and ``display_P[j]`` are the
-  smoothed log-ratio field and masses at ``display_sigmas[j]`` on ``ts`` (midpoints) by ``xs``.
+  smoothed log-ratio field and masses at ``display_sigmas[j]`` on ``ts`` (midpoints) by ``xs``; ``cross``
+  is the heavy-blur prediction for their nodal set.
   """
   sigmas: onp.ndarray
   info: onp.ndarray
@@ -319,12 +469,14 @@ class BlurScan:
   display_sigmas: onp.ndarray
   log_ratios: onp.ndarray
   display_P: onp.ndarray
+  cross: NodalCross
 
 
 def ou_blur_scan(sigmas: Sequence[float], *, T: float = 3.0, n_t: int = 400, xs: Array, a: float = 1.0,
                  m0: float = 2.0, v0: float = 0.25, v_inf: float = 1.0,
                  display_sigmas: Sequence[float] = (0.0, 0.3, 0.8)) -> BlurScan:
-  r""" Gaussian clock blur of an OU trajectory; checks that ``qbar`` is unchanged by the blur. """
+  r""" Gaussian clock blur of an OU trajectory; checks that ``qbar`` is unchanged by the blur and that the
+  displayed fields have their first time harmonic damped by exactly ``exp(-(pi sigma / T)^2 / 2)``. """
   ts = midpoint_times(T, n_t)
   P = ou_trajectory(ts, xs, a=a, m0=m0, v0=v0, v_inf=v_inf)
   q = P.mean(axis=0)
@@ -342,8 +494,13 @@ def ou_blur_scan(sigmas: Sequence[float], *, T: float = 3.0, n_t: int = 400, xs:
     mmc.append(float(jnp.mean(ou_contraction_rate(Ps, q, xs, a=a, v_inf=v_inf))))
   display_P = onp.stack([onp.asarray(blurred(s)) for s in display_sigmas])
   log_ratios = onp.stack([onp.asarray(log_ratio(jnp.maximum(Ps, 1e-300), w)) for Ps in display_P])
+  cross = nodal_cross(P, xs, T)
+  for sigma, Ps in zip(display_sigmas, display_P):
+    damped = cross.a1 * onp.exp(-0.5 * (onp.pi * sigma / T) ** 2)
+    assert onp.allclose(time_harmonic(jnp.asarray(Ps), 1), damped, rtol=0.0, atol=1e-9 * onp.abs(cross.a1).max()), \
+      "the blur did not damp the first time harmonic by exp(-(pi sigma / T)^2 / 2)"
   return BlurScan(onp.asarray(sigmas, dtype=float), onp.array(info), onp.array(mmc), onp.asarray(ts),
-                  onp.asarray(xs), onp.asarray(display_sigmas, dtype=float), log_ratios, display_P)
+                  onp.asarray(xs), onp.asarray(display_sigmas, dtype=float), log_ratios, display_P, cross)
 
 
 @dataclass(frozen=True)
@@ -383,3 +540,72 @@ def ring_comparison(n: int = 10, k_plus: float = 1.0, k_minus: float = 0.01, *, 
   assert onp.isclose(slowest[0].real, slowest[1].real, rtol=1e-6) and abs(slowest[1].imag) < 1e-9
   scans = tuple(ctmc_window_scan(K, p0, Ts) for K in Ks)
   return RingComparison(onp.asarray(ts), onp.stack(start), onp.stack(mode), onp.array(slowest), coherence, scans)
+
+
+@dataclass(frozen=True)
+class HamiltonianSpectrum:
+  r""" Lowest levels of ``H_dyn`` for one ring generator, and its first eigenfunction with nodes in the state.
+
+  ``state`` is ``p(t, x)`` of the lowest nonzero level that changes sign along ``x`` (``max |p| = 1``), the level's
+  response to a source at ``t = 0``, which fixes its phase inside a degenerate level. ``rank_residual`` is the
+  ratio ``s_2 / s_1`` of its singular values: zero for a product of a function of ``t`` and one of ``x``.
+  ``trajectory`` is the Rayleigh quotient of the exact trajectory from site 0, zero up to ``O(h^2)``.
+  """
+  label: str
+  energies: onp.ndarray
+  normal: onp.ndarray       # normal_levels for the same generator
+  level: float
+  state: onp.ndarray
+  rank_residual: float
+  gap: float                # crossing_gap(state)
+  trajectory: float
+
+
+def _hamiltonian_spectrum(label: str, K: Array, ts: Array, n_levels: int) -> HamiltonianSpectrum:
+  n, n_t, T = K.shape[0], len(ts), float(ts[-1])
+  H, scale = map(onp.asarray, dynamical_hamiltonian(K, T, n_t))
+  w, V = onp.linalg.eigh(H)
+  assert onp.max(onp.abs(w[:n])) < 1e-6 * w[n], "the zero level of H_dyn is not n-fold"
+  i = n
+  while i < len(w):
+    j = i + 1
+    while j < len(w) and abs(w[j] - w[i]) < 1e-6 * w[i]:
+      j += 1
+    p = (V[:, i:j] * scale.reshape(-1, 1)).reshape(n_t, n, j - i)
+    x0 = int(onp.argmax((p[0] ** 2).sum(axis=-1) >= (1 - 1e-6) * (p[0] ** 2).sum(axis=-1).max()))
+    state = p @ p[0, x0]
+    state = state / onp.abs(state).max()
+    if state[0].max() > 1e-3 and state[0].min() < -1e-3:
+      break
+    i = j
+  assert i < len(w), "no level of H_dyn changes sign along x"
+  sv = onp.linalg.svd(state, compute_uv=False)
+  phi = (onp.asarray(ctmc_trajectory(K, jnp.zeros(n).at[0].set(1.0), ts)) / scale).ravel()
+  return HamiltonianSpectrum(label, w[:n_levels], normal_levels(K, T, n_levels), float(w[i]), state, float(sv[1] / sv[0]),
+                             crossing_gap(state, onp.asarray(ts)), float(phi @ H @ phi / (phi @ phi)))
+
+
+@dataclass(frozen=True)
+class RingHamiltonian:
+  r""" ``H_dyn`` for four rings on ``ts``: uniform reversible, uniform driven, reversible in a potential, driven in it. """
+  ts: onp.ndarray
+  systems: tuple[HamiltonianSpectrum, HamiltonianSpectrum, HamiltonianSpectrum, HamiltonianSpectrum]
+
+
+def ring_hamiltonian(n: int = 10, k_plus: float = 1.0, k_minus: float = 0.01, *, T: float = 8.0, n_t: int = 161,
+                     depth: float = 3.0, n_levels: int = 30) -> RingHamiltonian:
+  r""" ``H_dyn`` on a uniform ring and on the ring in the potential ``depth cos(2 pi x / n)``, each reversible and driven.
+
+  The driven rings have rates ``k_plus`` and ``k_minus`` (``1`` and ``0.01`` is the ring of ``ring_comparison``), the
+  reversible ones ``(k_plus + k_minus) / 2`` both ways. Every ring has an ``n``-fold zero level, checked. A reversible
+  ring separates: its eigenfunctions are products, their nodal lines cross, and the levels are ``normal_levels``,
+  also in the potential, where only the nodes move. A uniform driven ring is normal, so the levels are the same and
+  the eigenfunctions are waves ``g(t) cos(2 pi m x / n + omega t)`` with tilted nodal lines that still cross. In
+  the potential the driven ring is not normal: the levels leave ``normal_levels`` and the crossings are avoided.
+  """
+  ts = jnp.linspace(0.0, T, n_t)
+  k_rev = 0.5 * (k_plus + k_minus)
+  rings = (("uniform, reversible", k_rev, k_rev, 0.0), ("uniform, driven", k_plus, k_minus, 0.0),
+           ("potential, reversible", k_rev, k_rev, depth), ("potential, driven", k_plus, k_minus, depth))
+  return RingHamiltonian(onp.asarray(ts), tuple(
+    _hamiltonian_spectrum(label, potential_ring_generator(n, kp, km, d), ts, n_levels) for label, kp, km, d in rings))

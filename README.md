@@ -68,7 +68,7 @@ Dependencies run one way: `plotting` imports `physics`, `physics` imports `src`.
 
 ## Tests
 
-`tests/` has 345 tests: finite symmetry (`young`, `group_algebra`, `exact_*`), antisymmetry and nodes, stochastic thermodynamics, spectral curves, and plotting smoke tests. The geometry layer and the wave and qubit demos have none.
+`tests/` has 375 tests: finite symmetry (`young`, `group_algebra`, `exact_*`), antisymmetry and nodes, stochastic thermodynamics, spectral curves, and plotting smoke tests. The geometry layer and the wave and qubit demos have none.
 
 ## Examples
 
@@ -81,7 +81,7 @@ Scripts, not importable modules. `crystal_nodes.py` and `proton_slab.py` write t
 | `proton_slab.py` | A slab of protons as a programmable spin Hamiltonian, at toy scale (about a minute) |
 | `ising_pop_physics.py` | Periodic-optimal-prior mismatch analyses for the Curie-Weiss model (`--quick --output-dir DIR`) |
 | `comps_plots.py`, `figures.py`, `lattice_plots.py`, `per_sym.py` | Presentation figures and animations for free particles, bands, lattices and Bloch waves |
-| `clock_information_figures.py` | Clock information and time-averaged mismatch cost for time-homogeneous relaxation: space-time log-ratio, clock-information decay, window scans, clock blur, driven versus reversible ring (`--quick --output-dir DIR --only NAME`, about 15 s quick) |
+| `clock_information_figures.py` | Clock information and time-averaged mismatch cost for time-homogeneous relaxation: space-time log-ratio, clock-information decay, window scans, clock blur (weighted and plain log-ratio with the heavy-blur nodal cross), driven versus reversible ring, the dynamical Hamiltonian `(d_t - K)^dagger (d_t - K)` of four rings (`--quick --output-dir DIR --only NAME`, about 20 s quick) |
 
 ## Notebooks
 
